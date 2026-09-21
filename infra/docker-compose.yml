@@ -1,0 +1,83 @@
+services:
+  synchronizer:
+    build: .
+    hostname: synchronizer
+    command: ["daemon", "-c", "/canton/user-config/synchronizer.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "5001:5001"
+      - "5002:5002"
+      - "5202:5202"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5002)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  participant1:
+    build: .
+    hostname: participant1
+    command: ["daemon", "-c", "/canton/user-config/participant1.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "5011:5011"
+      - "5012:5012"
+      - "5013:5013"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5012)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  participant2:
+    build: .
+    hostname: participant2
+    command: ["daemon", "-c", "/canton/user-config/participant2.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "5021:5021"
+      - "5022:5022"
+      - "5023:5023"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5022)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  participant3:
+    build: .
+    hostname: participant3
+    command: ["daemon", "-c", "/canton/user-config/participant3.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "5031:5031"
+      - "5032:5032"
+      - "5033:5033"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5032)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # One-shot: wires the 3 participants up to the synchronizer, pings between
+  # them as a smoke test, then exits. Re-run with:
+  #   docker compose run --rm bootstrap
+  bootstrap:
+    build: .
+    command: ["run", "/canton/user-config/bootstrap.canton", "-c", "/canton/user-config/bootstrap-remote.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    depends_on:
+      synchronizer:
+        condition: service_healthy
+      participant1:
+        condition: service_healthy
+      participant2:
+        condition: service_healthy
+      participant3:
+        condition: service_healthy
+    restart: "no"

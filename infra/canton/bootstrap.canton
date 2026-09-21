@@ -1,0 +1,24 @@
+// Bootstraps the "da" synchronizer from sequencer1 + mediator1, connects the
+// 3 participants to it, and pings between them as a smoke test.
+bootstrap.synchronizer(
+  synchronizerName = "da",
+  sequencers = Seq(sequencer1),
+  mediators = Seq(mediator1),
+  synchronizerOwners = Seq(sequencer1),
+  synchronizerThreshold = PositiveInt.one,
+  staticSynchronizerParameters =
+    StaticSynchronizerParameters.defaultsWithoutKMS(ProtocolVersion.forSynchronizer),
+)
+
+Seq(participant1, participant2, participant3).foreach { p =>
+  p.synchronizers.connect("da", "http://synchronizer:5001")
+}
+
+utils.retry_until_true {
+  Seq(participant1, participant2, participant3).forall(_.synchronizers.active("da"))
+}
+
+participant1.health.ping(participant2)
+participant2.health.ping(participant3)
+
+println("BOOTSTRAP_OK: 3 participants connected to synchronizer 'da'")
