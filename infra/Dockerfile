@@ -3,7 +3,7 @@ FROM eclipse-temurin:17-jre-jammy
 ARG CANTON_VERSION=3.5.18
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates jq \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /canton

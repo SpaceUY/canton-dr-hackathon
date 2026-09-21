@@ -21,4 +21,12 @@ utils.retry_until_true {
 participant1.health.ping(participant2)
 participant2.health.ping(participant3)
 
-println("BOOTSTRAP_OK: 3 participants connected to synchronizer 'da'")
+val darFile = new java.io.File("/canton/dars")
+  .listFiles()
+  .filter(_.getName.endsWith(".dar"))
+  .headOption
+  .getOrElse(sys.error("no .dar file found in /canton/dars — run `dpm build` in /daml first"))
+  .getAbsolutePath
+participants.all.dars.upload(darFile)
+
+println("BOOTSTRAP_OK: 3 participants connected to synchronizer 'da', DAR uploaded")

@@ -4,16 +4,23 @@ Docker topology for local dev: 1 synchronizer (sequencer1 + mediator1) + 3
 participants, each in its own container, all storage in-memory.
 
 Verified end to end against Canton `v3.5.18` (real binary run locally, then
-the same config run through `docker compose`): the 4 nodes start healthy and
-`bootstrap` connects all 3 participants to the `da` synchronizer and pings
-between them.
+the same config run through `docker compose`): the 4 nodes start healthy,
+`bootstrap` connects all 3 participants to the `da` synchronizer, pings
+between them and uploads the Daml model, and `seed` allocates one party per
+participant and creates a `Record` contract (see `../daml/Record.daml`)
+visible in all 3 participants' ACS.
 
 ## Run it
 
+Needs `dpm` installed first (not on `PATH` yet on this machine — see
+"Resolved assumptions" below for the download link).
+
 ```sh
-cd infra
+cd daml && DAML_VERSION=3.5.2 dpm build && cd ../infra   # produces the DAR
+
 docker compose up -d synchronizer participant1 participant2 participant3
-docker compose up bootstrap   # connects the 3 participants, pings, exits
+docker compose up bootstrap   # connects the 3 participants, uploads the DAR
+docker compose up seed        # allocates parties, creates + verifies a Record on all 3
 ```
 
 Ledger APIs are exposed on the host at `localhost:5011` (participant1),
@@ -48,15 +55,24 @@ docker compose up -d --force-recreate participant2
   nodes to already be reachable (it connects to them as *remote* nodes over
   the network — see `canton/bootstrap-remote.conf`). Re-run it any time with
   `docker compose up bootstrap`.
+- **`seed` uses the plain Ledger API JSON HTTP endpoint (curl + jq)**, not
+  Scala/Java codegen from the DAR. No auth is configured on these nodes, so
+  the built-in `participant_admin` user can act as any party without a
+  separate user-creation step. This also previews how `/agent` will likely
+  talk to a participant later — a plain HTTP client, not JVM tooling.
 
-## Open assumption — not yet verified
+## Resolved assumptions
 
-`/daml/daml.yaml` uses the `override-components` + `$DAML_VERSION` pattern
-from the bundled example projects in the `v3.5.18` release tarball (Canton
-3.5 removed the old `daml` assistant / `sdk-version` field in favor of `dpm`,
-the Digital Asset Package Manager). I could not run `dpm build` to confirm
-this compiles — `dpm` isn't installed on this machine. First thing to check
-once it's set up: `dpm build` from `/daml`.
+- `/daml/daml.yaml`'s `override-components` + `$DAML_VERSION` pattern is
+  confirmed working: `dpm build` (with `DAML_VERSION=3.5.2`) produces a DAR.
+  Note the Daml SDK version track (damlc/daml-script, e.g. `3.5.2`) is
+  **separate** from the Canton release track (e.g. `3.5.18`) — they don't
+  need to match, only the Daml-LF target (`--target=2.1` in `build-options`)
+  needs to be something the Canton version accepts.
+- `dpm` isn't on `PATH` yet on this machine — it was only downloaded to a
+  scratch dir to validate the build. Install it properly before the next
+  session: https://github.com/digital-asset/dpm/releases
+  (`dpm-<version>-darwin-arm64.tar.gz` for this Mac).
 
 ## References
 

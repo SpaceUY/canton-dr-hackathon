@@ -10,17 +10,22 @@ de alcance, ajustar acá y dejar la razón como comentario en el commit.
 - [x] `infra/Dockerfile` + `infra/docker-compose.yml`: synchronizer + 3
       participantes, cada uno en su propio contenedor, verificado
       end-to-end (bootstrap conecta los 3 y hace ping)
-- [x] `daml/daml.yaml` + `daml/Ping.daml` (template trivial, para probar el
-      pipeline de build/upload — no es el contrato de negocio)
-- [ ] Instalar `dpm` y confirmar que `dpm build` compila `daml/` (ver "Open
-      assumption" en `../infra/README.md`)
+- [x] `daml/daml.yaml` (template trivial, para probar el pipeline de
+      build/upload — el contrato de negocio real vino en el paso 1)
+- [x] Instalar `dpm` y confirmar que `dpm build` compila `daml/` — confirmado
+      (`DAML_VERSION=3.5.2 dpm build` produce el DAR); falta dejar `dpm` en
+      el `PATH` de la máquina de forma permanente (ver `../infra/README.md`)
 
 ## 1. Contrato Daml trivial entre los 3 nodos
 
-- [ ] Reemplazar `Ping.daml` por un contrato mínimo con estado real
-      (ej. un `Asset` o similar) entre `participant1`/`participant2`/`participant3`
-- [ ] Subir el DAR a los 3 participantes vía `bootstrap.canton` o consola
-- [ ] Crear al menos un contrato activo entre nodos para tener ACS no-trivial
+- [x] Reemplazar `Ping.daml` por `Record.daml` (owner + custodians), visible
+      a la vez en el ACS de `participant1`/`participant2`/`participant3`
+- [x] Subir el DAR a los 3 participantes vía `bootstrap.canton`
+- [x] Crear un contrato activo entre nodos (servicio `seed`, ver
+      `../infra/canton/seed.sh`) — el propio script verifica el ACS de los
+      3 participantes por HTTP JSON API antes de reportar éxito; probado
+      end-to-end desde cero y corrido 2 veces más para confirmar que
+      reutiliza parties y contrato existentes en vez de duplicar
 
 ## 2. Export ACS → import ACS a mano por consola — **crítico, día 1**
 

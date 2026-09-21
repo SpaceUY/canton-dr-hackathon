@@ -1,0 +1,15 @@
+-- Trivial contract to have real ACS state across the 3 participants (plan
+-- step 1). Signatory (owner) and observers (custodians) live on different
+-- participants, so this same contract shows up in all 3 nodes' ACS at once —
+-- which is what step 2 (export/import ACS by hand) needs to have something
+-- to lose. Shape previews BackupPolicy (../CLAUDE.md), not the real thing.
+module Record where
+
+template Record
+  with
+    owner : Party
+    custodians : [Party]
+    label : Text
+  where
+    signatory owner
+    observer custodians

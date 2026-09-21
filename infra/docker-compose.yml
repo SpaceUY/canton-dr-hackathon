@@ -71,6 +71,7 @@ services:
     command: ["run", "/canton/user-config/bootstrap.canton", "-c", "/canton/user-config/bootstrap-remote.conf", "--no-tty"]
     volumes:
       - ./canton:/canton/user-config:ro
+      - ../daml/.daml/dist:/canton/dars:ro
     depends_on:
       synchronizer:
         condition: service_healthy
@@ -80,4 +81,18 @@ services:
         condition: service_healthy
       participant3:
         condition: service_healthy
+    restart: "no"
+
+  # One-shot: allocates owner/custodian2/custodian3 parties and creates a
+  # Record contract visible on all 3 participants. Requires `bootstrap` to
+  # have run first (needs the DAR uploaded). Re-run with:
+  #   docker compose run --rm seed
+  seed:
+    build: .
+    entrypoint: ["bash", "/canton/user-config/seed.sh"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
     restart: "no"
