@@ -13,7 +13,7 @@
 val sourceParticipant = participant1
 val targetParticipant = participant4
 val partyHint = "owner"
-val exportFilePath = "/canton/backups/" + partyHint + "_acs.gz"
+val exportFilePath = "/canton/exports/" + partyHint + "_acs.gz"
 
 val partyId = sourceParticipant.parties.list(filterParty = partyHint).headOption
   .getOrElse(sys.error(s"party '$partyHint' not found on $sourceParticipant"))

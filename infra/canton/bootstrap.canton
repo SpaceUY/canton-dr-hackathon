@@ -10,12 +10,12 @@ bootstrap.synchronizer(
     StaticSynchronizerParameters.defaultsWithoutKMS(ProtocolVersion.forSynchronizer),
 )
 
-Seq(participant1, participant2, participant3).foreach { p =>
+Seq(participant1, participant2, participant3, participant4).foreach { p =>
   p.synchronizers.connect("da", "http://synchronizer:5001")
 }
 
 utils.retry_until_true {
-  Seq(participant1, participant2, participant3).forall(_.synchronizers.active("da"))
+  Seq(participant1, participant2, participant3, participant4).forall(_.synchronizers.active("da"))
 }
 
 participant1.health.ping(participant2)

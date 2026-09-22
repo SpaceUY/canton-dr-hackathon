@@ -1,0 +1,46 @@
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const CANTON_BIN = process.env.CANTON_BIN ?? "/canton/bin/canton";
+const REMOTE_CONFIG =
+  process.env.CANTON_REMOTE_CONFIG ??
+  "/canton/user-config/bootstrap-remote.conf,/canton/user-config/features.conf";
+
+// Repair commands (export_acs/import_acs) only exist in the Scala console,
+// not the Ledger JSON API — so every operation here means writing a small
+// .canton script and running it as a subprocess, then reading back stdout.
+export async function runCantonScript(scriptBody: string): Promise<string> {
+  const scriptPath = join(tmpdir(), `agent-${randomUUID()}.canton`);
+  await writeFile(scriptPath, scriptBody, "utf8");
+
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      const proc = spawn(CANTON_BIN, ["run", scriptPath, "-c", REMOTE_CONFIG, "--no-tty"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+      proc.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+
+      proc.on("error", reject);
+      proc.on("close", (code) => {
+        if (code === 0) {
+          resolve(stdout);
+        } else {
+          reject(new Error(`canton run exited with code ${code}\n${stderr || stdout}`));
+        }
+      });
+    });
+  } finally {
+    await unlink(scriptPath).catch(() => {});
+  }
+}

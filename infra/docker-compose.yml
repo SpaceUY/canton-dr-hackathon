@@ -2,7 +2,7 @@ services:
   synchronizer:
     build: .
     hostname: synchronizer
-    command: ["daemon", "-c", "/canton/user-config/synchronizer.conf", "--no-tty"]
+    command: ["daemon", "-c", "/canton/user-config/synchronizer.conf,/canton/user-config/features.conf", "--no-tty"]
     volumes:
       - ./canton:/canton/user-config:ro
     ports:
@@ -18,7 +18,7 @@ services:
   participant1:
     build: .
     hostname: participant1
-    command: ["daemon", "-c", "/canton/user-config/participant1.conf", "--no-tty"]
+    command: ["daemon", "-c", "/canton/user-config/participant1.conf,/canton/user-config/features.conf", "--no-tty"]
     volumes:
       - ./canton:/canton/user-config:ro
     ports:
@@ -34,7 +34,7 @@ services:
   participant2:
     build: .
     hostname: participant2
-    command: ["daemon", "-c", "/canton/user-config/participant2.conf", "--no-tty"]
+    command: ["daemon", "-c", "/canton/user-config/participant2.conf,/canton/user-config/features.conf", "--no-tty"]
     volumes:
       - ./canton:/canton/user-config:ro
     ports:
@@ -50,7 +50,7 @@ services:
   participant3:
     build: .
     hostname: participant3
-    command: ["daemon", "-c", "/canton/user-config/participant3.conf", "--no-tty"]
+    command: ["daemon", "-c", "/canton/user-config/participant3.conf,/canton/user-config/features.conf", "--no-tty"]
     volumes:
       - ./canton:/canton/user-config:ro
     ports:
@@ -59,6 +59,26 @@ services:
       - "5033:5033"
     healthcheck:
       test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5032)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # The recovery target: needs DB-backed storage, not memory (repair.import_acs
+  # refuses memory storage — see "Step 2 findings" in README.md). Its own named
+  # volume, separate from every other node and from `agent`'s.
+  participant4:
+    build: .
+    hostname: participant4
+    command: ["daemon", "-c", "/canton/user-config/participant4.conf,/canton/user-config/features.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - participant4_data:/canton/data
+    ports:
+      - "5041:5041"
+      - "5042:5042"
+      - "5043:5043"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5042)' || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -81,6 +101,8 @@ services:
         condition: service_healthy
       participant3:
         condition: service_healthy
+      participant4:
+        condition: service_healthy
     restart: "no"
 
   # One-shot: allocates owner/custodian2/custodian3 parties and creates a
@@ -96,3 +118,21 @@ services:
       bootstrap:
         condition: service_completed_successfully
     restart: "no"
+
+  # The backup/restore CLI (plan step 3), no cipher/shards yet. No volume
+  # shared with any participant — confirmed in infra/README.md that the
+  # exported ACS travels over the admin API, not shared disk. Invoke ad hoc:
+  #   docker compose run --rm agent backup --source participant1 --party owner --out /canton/exports/owner_acs.gz
+  #   docker compose run --rm agent restore --target participant4 --in /canton/exports/owner_acs.gz
+  agent:
+    build: ../agent
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  participant4_data:
+  agent_exports:

@@ -1,14 +1,18 @@
 # infra
 
-Docker topology for local dev: 1 synchronizer (sequencer1 + mediator1) + 3
-participants, each in its own container, all storage in-memory.
+Docker topology for local dev: 1 synchronizer (sequencer1 + mediator1) + 4
+participants, each in its own container. `participant1/2/3` are the demo's 3
+nodes (in-memory storage); `participant4` is the recovery target and needs
+database-backed storage — see "Step 2 findings" below.
 
 Verified end to end against Canton `v3.5.18` (real binary run locally, then
-the same config run through `docker compose`): the 4 nodes start healthy,
-`bootstrap` connects all 3 participants to the `da` synchronizer, pings
-between them and uploads the Daml model, and `seed` allocates one party per
+the same config run through `docker compose`): all 5 nodes start healthy,
+`bootstrap` connects all 4 participants to the `da` synchronizer, pings
+between them and uploads the Daml model, `seed` allocates one party per
 participant and creates a `Record` contract (see `../daml/Record.daml`)
-visible in all 3 participants' ACS.
+visible in `participant1/2/3`'s ACS, and `agent backup`/`agent restore`
+(the real `../agent` CLI, not a hand-written script) moves that contract's
+state from `participant1` into empty `participant4`.
 
 ## Run it
 
@@ -18,22 +22,35 @@ Needs `dpm` installed first (not on `PATH` yet on this machine — see
 ```sh
 cd daml && DAML_VERSION=3.5.2 dpm build && cd ../infra   # produces the DAR
 
-docker compose up -d synchronizer participant1 participant2 participant3
-docker compose up bootstrap   # connects the 3 participants, uploads the DAR
-docker compose up seed        # allocates parties, creates + verifies a Record on all 3
+docker compose up -d synchronizer participant1 participant2 participant3 participant4
+docker compose up bootstrap   # connects the 4 participants, uploads the DAR
+docker compose up seed        # allocates parties, creates + verifies a Record on 1/2/3
+
+# plan step 3: backup participant1's "owner" party, restore into empty participant4
+docker compose run --rm agent backup --source participant1 --party owner --out /canton/exports/owner_acs.gz
+docker compose run --rm agent restore --target participant4 --in /canton/exports/owner_acs.gz
 ```
 
 Ledger APIs are exposed on the host at `localhost:5011` (participant1),
-`5021` (participant2), `5031` (participant3). Admin APIs at `+1` on each of
-those. Console/admin access from your machine: point a remote Canton console
-at those ports (see `canton/bootstrap-remote.conf` for the shape).
+`5021` (participant2), `5031` (participant3), `5041` (participant4). Admin
+APIs at `+1` on each of those. Console/admin access from your machine: point
+a remote Canton console at those ports (see `canton/bootstrap-remote.conf`
+for the shape).
 
-To simulate a participant losing its base (storage is in-memory), just
+To simulate participant1/2/3 losing its base (storage is in-memory), just
 recreate its container:
 
 ```sh
 docker compose up -d --force-recreate participant2
 ```
+
+`participant4` uses a named volume (`participant4_data`) so it survives a
+plain restart — that's the point, it's meant to hold the recovered state.
+If you tear down and rebuild the whole topology from scratch, remove it too
+(`docker volume rm infra_participant4_data`), or `participant4` will come up
+remembering a synchronizer identity from a previous run and fail to
+reconnect (the synchronizer itself is in-memory, so its identity is fresh
+every time).
 
 ## Why these choices
 
@@ -58,8 +75,15 @@ docker compose up -d --force-recreate participant2
 - **`seed` uses the plain Ledger API JSON HTTP endpoint (curl + jq)**, not
   Scala/Java codegen from the DAR. No auth is configured on these nodes, so
   the built-in `participant_admin` user can act as any party without a
-  separate user-creation step. This also previews how `/agent` will likely
-  talk to a participant later — a plain HTTP client, not JVM tooling.
+  separate user-creation step.
+- **`agent` (plain `../agent`, no shared volume with any participant).**
+  Confirmed the exported `.gz` travels over the admin API, not shared disk —
+  ran the export/import from a container with no volume in common with
+  either participant and the file only ever existed in the agent's own
+  volume. `repair.export_acs`/`repair.import_acs` are console-only (no JSON
+  API equivalent), so the agent still shells out to `bin/canton run` with a
+  generated `.canton` script — it needs the full JVM + Canton distribution
+  in its image alongside Node, not just an HTTP client.
 
 ## Resolved assumptions
 
@@ -74,11 +98,11 @@ docker compose up -d --force-recreate participant2
   session: https://github.com/digital-asset/dpm/releases
   (`dpm-<version>-darwin-arm64.tar.gz` for this Mac).
 
-## Step 2 findings (export/import ACS — plan step 2, done by hand outside Docker)
+## Step 2 findings (export/import ACS)
 
-Validated against the real binary (not just this Docker setup, which doesn't
-yet have a 4th persisted participant to import into): `participant.repair.export_acs`
-→ `participant.repair.import_acs` (see `canton/recover-test.canton`) does move a
+First validated by hand against the real binary (see `canton/recover-test.canton`),
+then again through the real `../agent` CLI in docker-compose (plan step 3):
+`participant.repair.export_acs` → `participant.repair.import_acs` does move a
 party's contracts from one participant to another. Two hard constraints
 found the hard way, not documented anywhere obvious:
 

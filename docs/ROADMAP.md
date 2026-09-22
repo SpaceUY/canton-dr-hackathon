@@ -53,12 +53,34 @@ explícitamente. El docker-compose actual (paso 0) usa memoria en los 3
 participantes; hay que revisar esto al automatizar backup/restore desde el
 agente.
 
-## 3. Automatizar backup/restore end-to-end desde el agente
+## 3. Automatizar backup/restore end-to-end desde el agente ✅ funciona
 
-- [ ] Esqueleto del servicio en `/agent` (sin cifrado, sin shards)
-- [ ] Backup: exportar ACS de un participante y guardarlo
-- [ ] Restore: reimportar ese ACS en un participante vacío
-- [ ] Correrlo end-to-end sin intervención manual
+- [x] Esqueleto del servicio en `/agent` (sin cifrado, sin shards) — CLI en
+      TypeScript/Node (`agent/src/cli.ts`), invoca `bin/canton run` con un
+      script `.canton` generado en el momento (los comandos `repair.*` no
+      existen en la Ledger JSON API, solo en la consola Scala)
+- [x] Backup: `agent backup --source participant1 --party owner --out <path>`
+      — exporta el ACS de esa party
+- [x] Restore: `agent restore --target participant4 --in <path>` — la
+      encapsula el disconnect/import_acs/reconnect que el paso 2 encontró
+      necesario, el que llama al comando no tiene que acordarse
+- [x] Corrido end-to-end sin intervención manual vía docker-compose (nuevos
+      servicios `participant4` con storage H2 y `agent`, sin volumen
+      compartido con ningún participante — confirma que el archivo exportado
+      viaja por la admin API, no por disco compartido) y verificado que el
+      contrato recuperado es legible en `participant4`
+
+**Agregado al docker-compose del paso 0 (no lo tenía):** `participant4.conf`
+(storage H2, el único participante con volumen persistente propio),
+`features.conf` (los flags `enable-repair-commands`/`enable-testing-commands`
+que hacen falta para los comandos de repair) y el servicio `agent` en
+`infra/docker-compose.yml`.
+
+**Bugs propios que aparecieron al armar el CLI** (corregidos, ver commit):
+el entrypoint pasaba un `--` literal al parser de argumentos en vez de
+actuar como separador, y las funciones `backup`/`restore` no devolvían nada
+imprimible — el `println` del script de Canton quedaba atrapado adentro y
+la corrida "exitosa" no mostraba ninguna confirmación.
 
 ## 4. Cifrado + Shamir k-de-n + distribución entre custodios
 
