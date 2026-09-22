@@ -4,6 +4,7 @@ import { checkCommitment } from "./checkCommitment.js";
 import { issueChallenge } from "./challenge.js";
 import { challengeLoop } from "./challengeLoop.js";
 import { createPolicy, type CustodianRef } from "./createPolicy.js";
+import { startDashboard } from "./dashboard.js";
 import { distribute } from "./distribute.js";
 import { recover } from "./recover.js";
 import { requestRecovery } from "./requestRecovery.js";
@@ -31,7 +32,8 @@ function usage(): never {
       "  request-recovery --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> " +
       "--policy-id <id> --request-id <id>\n" +
       "  respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>\n" +
-      "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>",
+      "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>\n" +
+      "  dashboard        --port <port> --owner-participant <p> --owner <hint> --policy-id <id>",
   );
   process.exit(1);
 }
@@ -241,6 +243,16 @@ async function main(): Promise<void> {
         aboutParticipant: flag(rest, "about-participant"),
       }),
     );
+    return;
+  }
+
+  if (command === "dashboard") {
+    startDashboard({
+      port: intFlag(rest, "port"),
+      ownerParticipant: flag(rest, "owner-participant"),
+      ownerPartyHint: flag(rest, "owner"),
+      policyId: flag(rest, "policy-id"),
+    });
     return;
   }
 

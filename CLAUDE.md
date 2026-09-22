@@ -1,106 +1,106 @@
 # canton-dr
 
 Verifiable decentralized disaster recovery for Canton nodes.
-Proyecto para el hackathon de Canton Network (AppsFactory).
+Project for the Canton Network hackathon (AppsFactory).
 
-## El problema
+## The problem
 
-Canton prioriza la privacidad estricta: cada participante mantiene el estado de sus datos
-en su propio nodo local, y la red pública no guarda esos datos en forma legible.
+Canton prioritizes strict privacy: each participant keeps its data's state
+on its own local node, and the public network doesn't store that data in readable form.
 
-Si una base local se corrompe y los backups se pierden, los datos no se recuperan.
-Y aun teniendo backup, el operador no tiene forma de saber si ese backup sigue siendo
-recuperable, ni de verificar que el estado restaurado es el correcto: se entera cuando
-la red le empieza a rechazar transacciones.
+If a local database gets corrupted and the backups are lost, the data can't be recovered.
+And even with a backup, the operator has no way to know whether that backup is still
+recoverable, nor to verify that the restored state is correct: they find out when
+the network starts rejecting their transactions.
 
-## La solución
+## The solution
 
-El nodo cifra su estado, replica el blob cifrado entre varios custodios (otros
-participantes) y reparte la clave de cifrado en fragmentos k-de-n (Shamir Secret
-Sharing). Ningún custodio ve plaintext, y hacen falta k fragmentos para reconstruir
-la clave.
+The node encrypts its state, replicates the encrypted blob across several custodians (other
+participants), and splits the encryption key into k-of-n fragments (Shamir Secret
+Sharing). No custodian ever sees plaintext, and k fragments are needed to reconstruct
+the key.
 
-Canton NO se usa como storage, sino como capa de coordinación y auditoría: un contrato
-Daml registra los custodios y la política, y los desafía periódicamente a probar que
-siguen teniendo su fragmento, de modo que un backup degradado se detecta y se re-replica
-antes del desastre.
+Canton is NOT used as storage, but as a coordination and audit layer: a Daml
+contract registers the custodians and the policy, and periodically challenges them to prove
+they still hold their fragment, so a degraded backup gets detected and re-replicated
+before disaster strikes.
 
-Al recuperar, el ACS reconstruido se valida contra los ACS commitments que la red ya
-intercambia entre contrapartes: prueba criptográfica de que el estado es correcto, sin
-confiar en quien guardó el backup.
+On recovery, the reconstructed ACS is validated against the ACS commitments the network already
+exchanges between counterparties: cryptographic proof that the state is correct, without
+trusting whoever held the backup.
 
-**Idea en una línea:** la red no guarda tus datos, guarda la prueba de que tus datos son
-recuperables y correctos.
+**One-line idea:** the network doesn't store your data, it stores the proof that your data is
+recoverable and correct.
 
-## Decisiones de diseño (ya tomadas, no re-litigar)
+## Design decisions (already made, don't re-litigate)
 
-- **La red Canton no es storage.** El sequencer tiene fees de tráfico, pruning y límites
-  de tamaño de mensaje. Los blobs cifrados viajan por fuera (HTTP directo entre agentes).
-  El ledger lleva solo el registro, la política y las pruebas.
-- **Lo que se fragmenta con Shamir es la clave de cifrado, no la base.** El blob cifrado
-  se replica entero entre custodios. Mismo efecto de seguridad, mucho más eficiente.
-- **Los ACS commitments verifican, no restauran.** Son hashes. Lo que devuelve los datos
-  son los blobs de los custodios. Esto hay que decirlo explícitamente en el pitch.
-- **Recuperación de identidad y recuperación de estado son dos capas separadas.** Este
-  proyecto cubre estado (ACS). Las claves de identidad del nodo son otro problema y se
-  declara como fuera de alcance.
+- **The Canton network is not storage.** The sequencer has traffic fees, pruning, and message
+  size limits. The encrypted blobs travel outside it (direct HTTP between agents).
+  The ledger only carries the registry, the policy, and the proofs.
+- **What gets split with Shamir is the encryption key, not the base data.** The encrypted blob
+  is replicated whole across custodians. Same security effect, much more efficient.
+- **ACS commitments verify, they don't restore.** They're hashes. What returns the data
+  are the custodians' blobs. This needs to be stated explicitly in the pitch.
+- **Identity recovery and state recovery are two separate layers.** This
+  project covers state (ACS). The node's identity keys are a separate problem and are
+  declared out of scope.
 
-## Limitaciones conocidas (declararlas, no esconderlas)
+## Known limitations (state them, don't hide them)
 
-- Si quedan menos de k custodios disponibles, no hay recuperación. Sigue siendo un backup.
-- Sin backup previo no se reconstruye nada desde cero.
-- Tras el desastre se pierde el historial propio de commitments: la verificación requiere
-  pedirle a la contraparte el commitment que ella guardó. No es una operación local.
-- Los nombres exactos de los comandos de commitments cambian entre Canton 2.x y 3.x.
-  Confirmar la versión del hackathon antes de comprometerse a esa parte del demo.
+- If fewer than k custodians remain available, there's no recovery. It's still just a backup.
+- Without a prior backup, nothing gets reconstructed from scratch.
+- After a disaster, the node's own commitment history is lost: verification requires
+  asking the counterparty for the commitment it saved. It's not a local operation.
+- The exact names of the commitment commands change between Canton 2.x and 3.x.
+  Confirm the hackathon's version before committing to that part of the demo.
 
-## Arquitectura
+## Architecture
 
-Tres piezas:
+Three pieces:
 
-1. **Modelo Daml (on-ledger)** — `/daml`
-   - `BackupPolicy`: dueño, custodios, k, n, frecuencia
-   - `CustodianAgreement`: cada custodio acepta y deja constancia de qué recibió
-   - `Challenge` / `ChallengeResponse`: desafío periódico y su prueba
-   - `RecoveryRequest`: el dueño pide devolución, los custodios responden
+1. **Daml model (on-ledger)** — `/daml`
+   - `BackupPolicy`: owner, custodians, k, n, frequency
+   - `CustodianAgreement`: each custodian accepts and records what it received
+   - `Challenge` / `ChallengeResponse`: periodic challenge and its proof
+   - `RecoveryRequest`: the owner asks for the data back, the custodians respond
 
-2. **Agente por nodo (off-ledger)** — `/agent`
-   Exporta el ACS, cifra, parte la clave en k-de-n, distribuye blob y fragmentos,
-   responde desafíos, y en recovery junta todo y reimporta. El 80% del código.
+2. **Per-node agent (off-ledger)** — `/agent`
+   Exports the ACS, encrypts it, splits the key k-of-n, distributes the blob and fragments,
+   responds to challenges, and on recovery gathers everything and reimports it. 80% of the code.
 
-3. **Transporte** — HTTP directo entre agentes para los blobs. Fuera de Canton.
+3. **Transport** — direct HTTP between agents for the blobs. Outside Canton.
 
 ```
-/daml        modelo de contratos
-/agent       el servicio por nodo
-/infra       docker-compose, configs de los nodos
-/docs        README, diagrama, pitch
+/daml        contract model
+/agent       the per-node service
+/infra       docker-compose, node configs
+/docs        README, diagram, pitch
 ```
 
-## Plan de trabajo
+## Work plan
 
-Buscar una rebanada vertical funcionando antes de profundizar.
+Look for a working vertical slice before going deeper.
 
-0. Repo, template de Daml/Canton, docker-compose con 3 participantes + sincronizador.
-1. Crear algún contrato Daml trivial entre los 3 nodos, para tener estado real que perder.
-2. **Export ACS → import ACS en un nodo vacío, a mano por consola.** Si esto no funciona,
-   nada más importa. Primer día, sí o sí.
-3. Automatizarlo desde el agente, sin cifrado ni shards: backup y restore end-to-end.
-4. Cifrado + Shamir k-de-n + distribución entre custodios.
-5. Modelo Daml de registro y desafíos periódicos.
-6. Verificación contra los commitments de las contrapartes.
-7. UI mínima: estado de los custodios, últimos desafíos, botón de recovery.
+0. Repo, Daml/Canton template, docker-compose with 3 participants + synchronizer.
+1. Create some trivial Daml contract between the 3 nodes, to have real state to lose.
+2. **Export ACS → import ACS into an empty node, by hand via console.** If this doesn't work,
+   nothing else matters. Day one, no matter what.
+3. Automate it from the agent, without encryption or shards: end-to-end backup and restore.
+4. Encryption + Shamir k-of-n + distribution among custodians.
+5. Daml registry model and periodic challenges.
+6. Verification against counterparties' commitments.
+7. Minimal UI: custodian status, latest challenges, recovery button.
 
-Plan B si el tiempo no alcanza: quedarse en el núcleo de monitoreo y *backup assurance*
-(contrato de desafíos + chequeo de commitments), sin fragmentación. Mismo insight, una
-fracción del trabajo, terminable.
+Plan B if time runs short: stick to the monitoring core and *backup assurance*
+(challenge contract + commitment check), without fragmentation. Same insight, a
+fraction of the work, finishable.
 
-## Demo (5 minutos)
+## Demo (5 minutes)
 
-3 nodos. Uno pierde la base. Recupera con 2 de 3 fragmentos. Valida contra el commitment.
-Se muestra que el custodio solo vio ciphertext en todo momento.
+3 nodes. One loses its base. Recovers with 2 of 3 fragments. Validates against the commitment.
+Shows that the custodian only ever saw ciphertext.
 
-## Referencias
+## References
 
 - Repairing Participant Nodes: https://docs.digitalasset.com/operate/3.4/explanations/repairing.html
 - Repair Nodes (Daml SDK 2.x): https://docs.daml.com/canton/usermanual/repairing.html

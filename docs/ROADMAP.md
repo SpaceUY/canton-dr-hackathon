@@ -1,216 +1,227 @@
 # Roadmap — canton-dr
 
-Checklist de la rebanada vertical hasta el demo, basado en "Plan de trabajo"
-de `../CLAUDE.md`. Tildar a medida que se completa cada ítem. Si algo cambia
-de alcance, ajustar acá y dejar la razón como comentario en el commit.
+Checklist for the vertical slice up to the demo, based on the "Work plan"
+in `../CLAUDE.md`. Check items off as they're completed. If scope changes,
+adjust it here and leave the reason as a comment in the commit.
 
-## 0. Repo + template Daml/Canton + docker-compose
+## 0. Repo + Daml/Canton template + docker-compose
 
-- [x] Estructura de carpetas (`daml/`, `agent/`, `infra/`, `docs/`)
+- [x] Folder structure (`daml/`, `agent/`, `infra/`, `docs/`)
 - [x] `infra/Dockerfile` + `infra/docker-compose.yml`: synchronizer + 3
-      participantes, cada uno en su propio contenedor, verificado
-      end-to-end (bootstrap conecta los 3 y hace ping)
-- [x] `daml/daml.yaml` (template trivial, para probar el pipeline de
-      build/upload — el contrato de negocio real vino en el paso 1)
-- [x] Instalar `dpm` y confirmar que `dpm build` compila `daml/` — confirmado
-      (`DAML_VERSION=3.5.2 dpm build` produce el DAR); falta dejar `dpm` en
-      el `PATH` de la máquina de forma permanente (ver `../infra/README.md`)
+      participants, each in its own container, verified
+      end-to-end (bootstrap connects all 3 and pings)
+- [x] `daml/daml.yaml` (trivial template, to prove the build/upload
+      pipeline — the real business contract came in step 1)
+- [x] Install `dpm` and confirm `dpm build` compiles `daml/` — confirmed
+      (`DAML_VERSION=3.5.2 dpm build` produces the DAR); still need to put
+      `dpm` on the machine's `PATH` permanently (see `../infra/README.md`)
 
-## 1. Contrato Daml trivial entre los 3 nodos
+## 1. Trivial Daml contract between the 3 nodes
 
-- [x] Reemplazar `Ping.daml` por `Record.daml` (owner + custodians), visible
-      a la vez en el ACS de `participant1`/`participant2`/`participant3`
-- [x] Subir el DAR a los 3 participantes vía `bootstrap.canton`
-- [x] Crear un contrato activo entre nodos (servicio `seed`, ver
-      `../infra/canton/seed.sh`) — el propio script verifica el ACS de los
-      3 participantes por HTTP JSON API antes de reportar éxito; probado
-      end-to-end desde cero y corrido 2 veces más para confirmar que
-      reutiliza parties y contrato existentes en vez de duplicar
+- [x] Replace `Ping.daml` with `Record.daml` (owner + custodians), visible
+      at once in the ACS of `participant1`/`participant2`/`participant3`
+- [x] Upload the DAR to all 3 participants via `bootstrap.canton`
+- [x] Create an active contract between nodes (`seed` service, see
+      `../infra/canton/seed.sh`) — the script itself verifies the ACS of the
+      3 participants via HTTP JSON API before reporting success; tested
+      end-to-end from scratch and run 2 more times to confirm it
+      reuses existing parties and contract instead of duplicating them
 
-## 2. Export ACS → import ACS a mano por consola — **crítico, día 1** ✅ funciona
+## 2. Export ACS → import ACS by hand via console — **critical, day 1** ✅ works
 
-- [x] Con el contrato del paso 1 activo, exportar el ACS de un participante
-      por consola — `participant.repair.export_acs(...)`, probado contra el
-      binario real (no es el mismo mecanismo que el ejemplo `07-repair`, que
-      es sobre migración de synchronizer, pero misma familia de comandos)
-- [x] Importarlo en un participante vacío por consola, a mano —
-      `participant.repair.import_acs(...)`, ver `infra/canton/recover-test.canton`
-      y "Step 2 findings" en `infra/README.md` para los dos requisitos no
-      obvios que encontré (storage persistente, no memoria; desconectar del
-      synchronizer antes de importar)
-- [x] Confirmar que el estado restaurado permite operar con normalidad —
-      el contrato importado es legible y correcto vía la Ledger API del
-      participante que lo recibió (verificado por HTTP). Someter una
-      transacción *como* la party recuperada no funcionó de entrada porque
-      probé contra una identidad de participante distinta a propósito — eso
-      es exactamente la recuperación de identidad/hosting que el CLAUDE.md ya
-      declaraba fuera de alcance, no una falla del mecanismo de estado
-- [x] Si esto no funciona: replantear — no hizo falta, funcionó
+- [x] With the contract from step 1 active, export a participant's ACS
+      via console — `participant.repair.export_acs(...)`, tested against the
+      real binary (not the same mechanism as the `07-repair` example, which
+      is about synchronizer migration, but the same command family)
+- [x] Import it into an empty participant by hand via console —
+      `participant.repair.import_acs(...)`, see `infra/canton/recover-test.canton`
+      and "Step 2 findings" in `infra/README.md` for the two non-obvious
+      requirements I found (persistent storage, not memory; disconnect from
+      the synchronizer before importing)
+- [x] Confirm the restored state allows normal operation — the imported
+      contract is readable and correct via the Ledger API of the
+      participant that received it (verified over HTTP). Submitting a
+      transaction *as* the recovered party didn't work out of the box because
+      I deliberately tested against a different participant identity — that's
+      exactly the identity/hosting recovery that CLAUDE.md already
+      declared out of scope, not a failure of the state mechanism
+- [x] If this doesn't work: rethink the approach — wasn't needed, it worked
 
-**Hallazgo que cambia el paso 3:** el nodo que recupera necesita storage en
-base de datos (H2 o Postgres), no memoria — `import_acs` lo rechaza
-explícitamente. El docker-compose actual (paso 0) usa memoria en los 3
-participantes; hay que revisar esto al automatizar backup/restore desde el
-agente.
+**Finding that changes step 3:** the recovering node needs database-backed
+storage (H2 or Postgres), not memory — `import_acs` explicitly rejects it.
+The current docker-compose (step 0) uses memory on all 3 participants; this
+needs revisiting when automating backup/restore from the agent.
 
-## 3. Automatizar backup/restore end-to-end desde el agente ✅ funciona
+## 3. Automate end-to-end backup/restore from the agent ✅ works
 
-- [x] Esqueleto del servicio en `/agent` (sin cifrado, sin shards) — CLI en
-      TypeScript/Node (`agent/src/cli.ts`), invoca `bin/canton run` con un
-      script `.canton` generado en el momento (los comandos `repair.*` no
-      existen en la Ledger JSON API, solo en la consola Scala)
+- [x] Service skeleton in `/agent` (no encryption, no shards) — TypeScript/Node
+      CLI (`agent/src/cli.ts`), invokes `bin/canton run` with a
+      `.canton` script generated on the fly (the `repair.*` commands don't
+      exist in the Ledger JSON API, only in the Scala console)
 - [x] Backup: `agent backup --source participant1 --party owner --out <path>`
-      — exporta el ACS de esa party
-- [x] Restore: `agent restore --target participant4 --in <path>` — la
-      encapsula el disconnect/import_acs/reconnect que el paso 2 encontró
-      necesario, el que llama al comando no tiene que acordarse
-- [x] Corrido end-to-end sin intervención manual vía docker-compose (nuevos
-      servicios `participant4` con storage H2 y `agent`, sin volumen
-      compartido con ningún participante — confirma que el archivo exportado
-      viaja por la admin API, no por disco compartido) y verificado que el
-      contrato recuperado es legible en `participant4`
+      — exports that party's ACS
+- [x] Restore: `agent restore --target participant4 --in <path>` — it
+      encapsulates the disconnect/import_acs/reconnect that step 2 found
+      necessary, so whoever calls the command doesn't have to remember it
+- [x] Run end-to-end with no manual intervention via docker-compose (new
+      `participant4` service with H2 storage and `agent`, no volume
+      shared with any participant — confirms the exported file travels
+      over the admin API, not shared disk) and verified the recovered
+      contract is readable on `participant4`
 
-**Agregado al docker-compose del paso 0 (no lo tenía):** `participant4.conf`
-(storage H2, el único participante con volumen persistente propio),
-`features.conf` (los flags `enable-repair-commands`/`enable-testing-commands`
-que hacen falta para los comandos de repair) y el servicio `agent` en
+**Added to step 0's docker-compose (it didn't have this):** `participant4.conf`
+(H2 storage, the only participant with its own persistent volume),
+`features.conf` (the `enable-repair-commands`/`enable-testing-commands` flags
+the repair commands need) and the `agent` service in
 `infra/docker-compose.yml`.
 
-**Bugs propios que aparecieron al armar el CLI** (corregidos, ver commit):
-el entrypoint pasaba un `--` literal al parser de argumentos en vez de
-actuar como separador, y las funciones `backup`/`restore` no devolvían nada
-imprimible — el `println` del script de Canton quedaba atrapado adentro y
-la corrida "exitosa" no mostraba ninguna confirmación.
+**Own bugs that showed up while building the CLI** (fixed, see commit):
+the entrypoint passed a literal `--` to the argument parser instead of
+acting as a separator, and the `backup`/`restore` functions returned nothing
+printable — Canton's script `println` stayed trapped inside, and a
+"successful" run showed no confirmation at all.
 
-## 4. Cifrado + Shamir k-de-n + distribución entre custodios ✅ funciona
+## 4. Encryption + Shamir k-of-n + distribution among custodians ✅ works
 
-Esquema: **k=2, n=3 incluyendo al owner** como uno de los 3 shareholders
-(no hacía falta un 4to nodo custodio) — así, cuando el owner es el que
-pierde la base, se recupera igual con los 2 fragments que quedaron en los
-custodios externos.
+Scheme: **k=2, n=3 including the owner** as one of the 3 shareholders
+(no need for a 4th custodian node) — so when the owner is the one that
+loses its base, it still recovers with the 2 fragments held by the
+external custodians.
 
-- [x] Cifrar el blob de estado antes de guardarlo/enviarlo — AES-256-GCM
+- [x] Encrypt the state blob before storing/sending it — AES-256-GCM
       (`agent/src/crypto.ts`, `node:crypto`)
-- [x] Partir la clave de cifrado en fragmentos k-de-n (Shamir) —
-      `shamir-secret-sharing` (librería TS auditada de Privy, cero deps)
-- [x] Distribuir blob cifrado + fragmentos entre los custodios (HTTP directo,
-      fuera de Canton) — `agent distribute`, empuja a los 3 endpoints
-      (incluyendo el propio owner) vía PUT
-- [x] Reconstruir la clave con k de n fragmentos y descifrar en recovery —
-      `agent recover`, probado explícitamente con solo 2 de los 3 endpoints
-      (salteando el del owner) para no validar solo el happy path
+- [x] Split the encryption key into k-of-n fragments (Shamir) —
+      `shamir-secret-sharing` (Privy's audited TS library, zero deps)
+- [x] Distribute the encrypted blob + fragments among custodians (direct HTTP,
+      outside Canton) — `agent distribute`, pushes to all 3 endpoints
+      (including the owner itself) via PUT
+- [x] Reconstruct the key from k of n fragments and decrypt on recovery —
+      `agent recover`, explicitly tested with only 2 of the 3 endpoints
+      (skipping the owner's) so it doesn't only validate the happy path
 
-Cada nodo ahora tiene un agente propio (`agent1`/`agent2`/`agent3` en
-`docker-compose.yml`) corriendo `agent serve` — un servidor HTTP que
-recibe y guarda blob+fragment, y los devuelve para la recuperación. El CLI
-para disparar comandos (`backup`/`restore`/`distribute`/`recover`) sigue
-siendo el servicio `agent` separado — ver el bug de DNS más abajo.
+Each node now has its own agent (`agent1`/`agent2`/`agent3` in
+`docker-compose.yml`) running `agent serve` — an HTTP server that
+receives and stores blob+fragment, and returns them for recovery. The CLI
+for firing commands (`backup`/`restore`/`distribute`/`recover`) is still
+the separate `agent` service — see the DNS bug below.
 
-**Verificado que el custodio nunca ve el plaintext:** inspeccioné el
-archivo guardado en el volumen de `agent2` directamente — son bytes de alta
-entropía, sin estructura reconocible.
+**Verified the custodian never sees the plaintext:** inspected the
+file stored in `agent2`'s volume directly — it's high-entropy bytes,
+with no recognizable structure.
 
-**Bugs encontrados armando esto** (todos corregidos, ver commit):
-- `shamir-secret-sharing` valida `secret.constructor !== Uint8Array` a
-  rajatabla — un `Buffer` de Node (lo que devuelven `crypto.randomBytes` y
-  `fs.readFile`) es subclase de `Uint8Array` pero falla ese chequeo. Hubo
-  que convertir explícitamente con `new Uint8Array(...)`.
-- El `fetch()` global de Node tampoco acepta un `Buffer` como `body` (error
-  de tipos en compilación) — mismo fix.
-- **El bug más caro:** al principio hice que `agent1`/`agent2`/`agent3`
-  también corrieran los comandos CLI (`docker compose run agent1
-  distribute ...`), pero eso crea un *segundo* contenedor que comparte el
-  alias de red "agent1" con el servidor `serve` ya corriendo — el DNS
-  embebido de Docker resolvió el auto-push del owner hacia el contenedor
-  sin servidor, dando `ECONNREFUSED`. Separé el rol: `agent1/2/3` solo
-  sirven HTTP, el servicio `agent` (sin hostname) corre los comandos.
-- La máquina de desarrollo está al límite de memoria con las 5 JVMs de
-  Canton + los 3 agentes arriba a la vez (~6GB contra un límite de 7.65GB
-  en Docker Desktop) — se mataron `participant3` y `participant4` por OOM
-  durante las pruebas. No es un bug de código, pero hay que subir el límite
-  de memoria de Docker Desktop antes del día de la demo.
+**Bugs found while building this** (all fixed, see commit):
+- `shamir-secret-sharing` strictly validates `secret.constructor !== Uint8Array`
+  — a Node `Buffer` (what `crypto.randomBytes` and `fs.readFile` return) is
+  a `Uint8Array` subclass but fails that check. Had to convert
+  explicitly with `new Uint8Array(...)`.
+- Node's global `fetch()` also doesn't accept a `Buffer` as `body` (a
+  compile-time type error) — same fix.
+- **The costliest bug:** at first I had `agent1`/`agent2`/`agent3`
+  also run the CLI commands (`docker compose run agent1
+  distribute ...`), but that creates a *second* container that shares the
+  "agent1" network alias with the already-running `serve` server — Docker's
+  embedded DNS resolved the owner's self-push to the
+  server-less container, giving `ECONNREFUSED`. Split the role:
+  `agent1/2/3` only serve HTTP, the `agent` service (no hostname) runs the commands.
+- The dev machine is right at the memory limit with the 5 Canton JVMs
+  + the 3 agents up at once (~6GB against a 7.65GB limit
+  in Docker Desktop) — `participant3` and `participant4` got OOM-killed
+  during testing. Not a code bug, but the Docker Desktop memory limit
+  needs raising before demo day.
 
-## 5. Modelo Daml de registro y desafíos periódicos ✅ funciona
+## 5. Daml registry model and periodic challenges ✅ works
 
-- [x] `BackupPolicy`: dueño, custodios, k, n, frecuencia — `daml/BackupPolicy.daml`.
-      `custodians` lista solo a los 2 externos (n=3 incluye al owner por la
-      decisión del paso 4, pero nadie se desafía a sí mismo)
-- [x] `CustodianAgreement`: cada custodio acepta y deja constancia de qué
-      recibió — un hash SHA-256 del blob cifrado, nunca el blob ni el share
-- [x] `Challenge` / `ChallengeResponse`: desafío periódico y su prueba —
-      la prueba es `HMAC-SHA256(share, challengeId)`, calculada por
-      `agent respond` con el share local, que nunca sale del custodio
-- [x] Job/trigger que dispare desafíos según la frecuencia de la política —
-      `agent challenge-loop` (loop simple en el agente, no un Daml Trigger
-      completo — de más para lo que un demo necesita)
+- [x] `BackupPolicy`: owner, custodians, k, n, frequency — `daml/BackupPolicy.daml`.
+      `custodians` lists only the 2 external ones (n=3 includes the owner per
+      step 4's decision, but nobody challenges themselves)
+- [x] `CustodianAgreement`: each custodian accepts and records what it
+      received — a SHA-256 hash of the encrypted blob, never the blob or the share
+- [x] `Challenge` / `ChallengeResponse`: periodic challenge and its proof —
+      the proof is `HMAC-SHA256(share, challengeId)`, computed by
+      `agent respond` with the local share, which never leaves the custodian
+- [x] Job/trigger that fires challenges according to the policy's frequency —
+      `agent challenge-loop` (a plain loop in the agent, not a full Daml
+      Trigger — overkill for what a demo needs)
 
-Comandos nuevos: `agent create-policy`, `agent accept-custody`,
-`agent challenge`, `agent respond`, `agent challenge-loop` — ver
-"Run it" y "Step 5 findings" en `infra/README.md`.
+New commands: `agent create-policy`, `agent accept-custody`,
+`agent challenge`, `agent respond`, `agent challenge-loop` — see
+"Run it" and "Step 5 findings" in `infra/README.md`.
 
-Probado end-to-end contra Docker real: `create-policy` → `distribute` →
-`accept-custody` (los 2 custodios, mismo blobHash porque reciben el mismo
-ciphertext) → `challenge` → `respond`, y confirmado por API que el
-`Challenge` quedó archivado (no huérfano) y solo sobrevive el
-`ChallengeResponse`. `challenge-loop` corrido aparte y confirmado que
-dispara rondas repetidas a ambos custodios sin caerse.
+Tested end-to-end against real Docker: `create-policy` → `distribute` →
+`accept-custody` (both custodians, same blobHash since they receive the
+same ciphertext) → `challenge` → `respond`, and confirmed via API that the
+`Challenge` was archived (not left orphaned) and only the
+`ChallengeResponse` survives. `challenge-loop` run separately and confirmed
+to fire repeated rounds against both custodians without dying.
 
-## 6. Verificación contra los commitments de las contrapartes ✅ (alcance ajustado, ver abajo)
+## 6. Verification against counterparties' commitments ✅ (scope adjusted, see below)
 
-- [x] Confirmar los nombres de comando de commitments para la versión de
-      Canton del hackathon — confirmado por bytecode y probado contra el
-      binario real: `commitments.lookup_sent_acs_commitments`,
+- [x] Confirm the commitment command names for the hackathon's
+      Canton version — confirmed via bytecode and tested against the
+      real binary: `commitments.lookup_sent_acs_commitments`,
       `lookup_received_acs_commitments`, `open_commitment`,
       `get_intervals_behind_for_counter_participants`
-- [x] `RecoveryRequest`: el dueño pide devolución, los custodios responden —
-      mismo patrón que `Challenge`/`ChallengeResponse` en
-      `daml/BackupPolicy.daml`, comandos `agent request-recovery` /
+- [x] `RecoveryRequest`: the owner asks for the data back, the custodians
+      respond — same pattern as `Challenge`/`ChallengeResponse` in
+      `daml/BackupPolicy.daml`, commands `agent request-recovery` /
       `agent respond-recovery`
-- [x] Validar el ACS reconstruido contra los commitments — **alcance
-      ajustado a propósito**: la comparación "de verdad" (recalcular un
-      hash y compararlo contra el que la contraparte ya tenía) solo
-      significa algo cuando es la MISMA identidad de participante la que se
-      recupera — y `participant4` es un doble con identidad nueva a
-      propósito (ver hallazgos del paso 2). Lo que sí se prueba: el comando
-      real (`agent check-commitment`) conecta y trae datos reales y
-      estructurados de una contraparte activa — no es una operación local,
-      tal como ya declaraba el CLAUDE.md original
+- [x] Validate the reconstructed ACS against the commitments — **scope
+      deliberately adjusted**: the "real" comparison (recomputing a
+      hash and comparing it against what the counterparty already had)
+      only means something when the SAME participant identity is
+      recovering — and `participant4` is a stand-in with a fresh identity on
+      purpose (see step 2's findings). What is proven: the
+      real command (`agent check-commitment`) connects and returns real,
+      structured data from an active counterparty — it's not a local
+      operation, exactly as the original CLAUDE.md already declared
 
-**Hallazgo, no bug:** `lookup_sent_acs_commitments` devolvió `Map()` vacío
-en todas las corridas de prueba, incluso sin filtros y bastante después del
-intervalo de reconciliación por defecto (1 minuto). `get_intervals_behind_for_counter_participants`
-sí trae datos reales para el mismo par de nodos (confirma que Canton sigue
-la relación, 0 intervalos de atraso). Lectura: un período de commitment
-cerrado y consultable necesita más tiempo real transcurrido que una ventana
-de prueba corta — no es que el comando esté roto. Ver "Step 6 findings" en
-`infra/README.md` para el detalle completo (incluye dos bugs propios: los
-nombres de parámetros que saqué del bytecode eran incorrectos —
-`javap` no preserva nombres de parámetros con nombre de Scala, hubo que
-llamar posicionalmente — y `SynchronizerTimeRange` necesitaba un import
-explícito).
+**Finding, not a bug:** `lookup_sent_acs_commitments` returned an empty
+`Map()` in every test run, even with no filters and well past the
+default reconciliation interval (1 minute). `get_intervals_behind_for_counter_participants`
+does return real data for the same pair of nodes (confirms Canton is tracking
+the relationship, 0 intervals behind). Reading: a closed, queryable
+commitment period needs more elapsed real time than a short test window
+gives it — the command isn't broken. See "Step 6 findings" in
+`infra/README.md` for the full detail (includes two own bugs: the
+parameter names I pulled from the bytecode were wrong —
+`javap` doesn't preserve Scala named-parameter names, had to
+call positionally instead — and `SynchronizerTimeRange` needed an
+explicit import).
 
-**Hallazgo de la prueba de regresión completa, no de este paso puntual:**
-`create-policy`, `accept-custody`, `challenge` y `request-recovery` no eran
-idempotentes — un timeout del lado del cliente (un 503 real bajo presión
-de memoria, no hipotético) no significa que el servidor no haya procesado
-igual el comando. Reintentar `accept-custody` después de uno dejó un
-`CustodianAgreement` duplicado. Los cuatro comandos ahora chequean si ya
-existe el contrato antes de crear.
+**Finding from the full regression test, not from this step specifically:**
+`create-policy`, `accept-custody`, `challenge`, and `request-recovery` weren't
+idempotent — a client-side timeout (a real 503 under memory
+pressure, not hypothetical) doesn't mean the server didn't still process
+the command. Retrying `accept-custody` after one left a duplicated
+`CustodianAgreement`. All four commands now check whether the
+contract already exists before creating it.
 
-## 7. UI mínima
+## 7. Minimal UI ✅ works (browser visual check still pending)
 
-- [ ] Estado de los custodios (activo / degradado)
-- [ ] Últimos desafíos y sus resultados
-- [ ] Botón de recovery
+- [x] Custodian status (active / degraded) — table with status
+      derived from `CustodianAgreement`/`Challenge`/`ChallengeResponse`
+- [x] Latest challenges and their results — open challenges + last
+      response per custodian
+- [x] Recovery button — calls `POST /recover` on the new `dashboard`
+      service, which reuses the same `recover()` from step 4
 
-## Demo (5 minutos)
+New: `agent/src/dashboard.ts` (`dashboard` service in docker-compose,
+port 4010) + `ui/` (React + Vite + TypeScript, without Redux/RTK Query/Tailwind
+— see "Step 7 findings" in `infra/README.md` for why). The `/status`
+and `/recover` endpoints were tested via curl end-to-end (two custodians in
+different states, and a real recovery verified on `participant4`) —
+**visual verification in a real browser is still pending**, no browser tool
+was available in this environment. Open `http://localhost:5173` yourself
+before relying on this for the demo.
 
-- [ ] Guion: 3 nodos, uno pierde la base, recupera con 2 de 3 fragmentos,
-      valida contra el commitment, se muestra que el custodio solo vio
-      ciphertext en todo momento
-- [ ] Ensayo cronometrado
+## Demo (5 minutes)
 
-## Plan B (si el tiempo no alcanza)
+- [ ] Script: 3 nodes, one loses its base, recovers with 2 of 3 fragments,
+      validates against the commitment, shows that the custodian only ever
+      saw ciphertext
+- [ ] Timed rehearsal
 
-- [ ] Cortar en *backup assurance*: solo pasos 0–3 + 5–6 (desafíos +
-      verificación contra commitments), sin fragmentación Shamir (sin paso 4)
+## Plan B (if time runs short)
+
+- [ ] Cut down to *backup assurance*: only steps 0–3 + 5–6 (challenges +
+      commitment verification), no Shamir fragmentation (skip step 4)

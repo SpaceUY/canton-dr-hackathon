@@ -68,6 +68,10 @@ docker compose run --rm agent request-recovery --owner-participant participant1:
 docker compose run --rm agent respond-recovery --as agent2 --participant participant2:5023 --custodian custodian2 \
   --policy-id demo --request-id req-1
 docker compose run --rm agent check-commitment --counterparty-participant participant2 --about-participant participant1
+
+# plan step 7: dashboard API (own service, always up) + the UI (run separately, not in Docker)
+docker compose up -d dashboard
+cd ../ui && pnpm install && pnpm dev   # opens on http://localhost:5173, talks to :4010
 ```
 
 Ledger APIs are exposed on the host at `localhost:5011` (participant1),
@@ -291,6 +295,36 @@ restart.
   so there is nothing of its own to compare yet. What's proven here is that
   the real command surface exists, connects, and returns real structured
   data for an active counterparty pair.
+
+## Step 7 findings (dashboard + ui/)
+
+- **`dashboard` is its own persistent service**, not folded into `serve`
+  (which runs on `agent1`/`agent2`/`agent3` for the custodian side) or into
+  the `agent` CLI runner. It's a third, distinct concern — an owner-facing
+  read API plus the recovery trigger — with its own port (`4010`) and no
+  reason to share a process with either of the other two.
+- **`ui/` is a plain Vite + React + TypeScript app, deliberately without
+  Redux Toolkit / RTK Query / Tailwind** (the company defaults in
+  `~/.claude-work/CLAUDE.md`) — one screen backed by two endpoints doesn't
+  need a state management library or a design system; adding either would
+  be more code for a "minimal UI" to maintain, not less.
+- **Not containerized.** `dashboard` runs in `docker compose` like
+  everything else; `ui/` runs as an ordinary local `pnpm dev` process
+  pointed at `http://localhost:4010` (`VITE_API_URL` to override). The
+  Vite dev server already handles hot reload and CORS is wide open on
+  `dashboard` (`access-control-allow-origin: *`) — containerizing a
+  frontend dev server buys nothing here.
+- Verified end to end: seeded a policy where one custodian accepted
+  custody and got a challenge (shows "Esperando respuesta") and the other
+  never accepted (shows "Sin custodia aceptada") — confirmed via `curl
+  /status` that both states come through correctly — then called `POST
+  /recover` directly (what the UI's "Recover" button does) and confirmed
+  by querying `participant4`'s ACS afterward that the state landed
+  correctly. **Not verified in an actual browser** — no browser tool was
+  available in this environment; `pnpm run build` compiles cleanly and the
+  dev server serves without errors, but that's not the same as seeing it
+  render. Open `http://localhost:5173` yourself before relying on it for
+  the demo.
 
 ## References
 

@@ -1,7 +1,7 @@
 -- On-ledger registry + periodic challenges (plan step 5). Canton is not
 -- storage here — these contracts never carry the blob or a key share, only
 -- a hash (receipt) and an HMAC (proof of possession). The real bytes stay
--- off-ledger between agents (see ../CLAUDE.md, "decisiones de diseño").
+-- off-ledger between agents (see ../CLAUDE.md, "design decisions").
 module BackupPolicy where
 
 -- custodians lists only the *external* custodians — the owner also holds

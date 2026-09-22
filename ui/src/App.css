@@ -1,0 +1,81 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #0f1115;
+  color: #e4e6eb;
+}
+
+.app {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+code {
+  background: #1c1f26;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid #2a2e37;
+  font-size: 0.9rem;
+}
+
+tr.status-ok {
+  color: #4ade80;
+}
+
+tr.status-awaiting-response {
+  color: #fbbf24;
+}
+
+tr.status-no-custody-accepted,
+tr.status-no-challenge-yet {
+  color: #94a3b8;
+}
+
+.error {
+  color: #f87171;
+}
+
+button {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.recover-result {
+  margin-top: 1rem;
+  background: #1c1f26;
+  padding: 0.75rem;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

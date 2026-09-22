@@ -207,6 +207,35 @@ services:
       - agent2_custody:/canton/custody/agent2:ro
       - agent3_custody:/canton/custody/agent3:ro
 
+  # Plan step 7: owner-facing read API + recovery trigger for ui/. Not an
+  # endpoint any other agent pushes to, so — unlike agent1/2/3 — running it
+  # long-lived has no DNS-alias collision risk from also using `agent` for
+  # ad hoc commands.
+  dashboard:
+    build: ../agent
+    hostname: dashboard
+    command:
+      [
+        "dashboard",
+        "--port",
+        "4010",
+        "--owner-participant",
+        "participant1:5013",
+        "--owner",
+        "owner",
+        "--policy-id",
+        "demo",
+      ]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "4010:4010"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4010)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
 volumes:
   participant4_data:
   agent_exports:
