@@ -74,9 +74,46 @@ docker compose up -d --force-recreate participant2
   session: https://github.com/digital-asset/dpm/releases
   (`dpm-<version>-darwin-arm64.tar.gz` for this Mac).
 
+## Step 2 findings (export/import ACS — plan step 2, done by hand outside Docker)
+
+Validated against the real binary (not just this Docker setup, which doesn't
+yet have a 4th persisted participant to import into): `participant.repair.export_acs`
+→ `participant.repair.import_acs` (see `canton/recover-test.canton`) does move a
+party's contracts from one participant to another. Two hard constraints
+found the hard way, not documented anywhere obvious:
+
+- **The importing participant can't use `storage.type = memory`** —
+  `import_acs` fails with `"is in memory which is not supported by repair.
+  Use db persistence"`. It needs H2 (file, not `mem:`) or Postgres. This
+  wasn't true in the docker-compose above and matters for plan step 3: the
+  node that recovers will need persistent storage, not memory.
+- **The importing participant must first disconnect from the synchronizer**
+  (`participant.synchronizers.disconnect("da")`), or `import_acs` refuses
+  with `"There are still synchronizers connected"`. Reconnect after with
+  `reconnect_all()`.
+- Both nodes, and whatever config runs the console script itself, need
+  `canton.features.enable-repair-commands = true` and
+  `enable-testing-commands = true` — these are gated behind feature flags.
+
+What's proven and what isn't: the imported contract is immediately visible
+and correct via the importing participant's own Ledger API (queried its ACS
+directly, got back the exact `Record` with the right signatory/observers).
+Submitting a command **as** the recovered party from the new participant
+does *not* work out of the box (`NO_SYNCHRONIZER_ON_WHICH_ALL_SUBMITTERS_CAN_SUBMIT`)
+— that party is still only authorized to submit from its original
+participant. This lines up exactly with `../CLAUDE.md`'s own scope boundary:
+state recovery (this) and identity/hosting recovery (separate, declared
+out of scope) are different problems. In the real scenario the recovering
+node keeps its own identity/keys and re-imports its own lost data, so this
+gap shouldn't come up in practice — it only showed up here because the test
+used a *different* participant identity as the recovery target, to prove
+the export/import mechanism without needing to fake an identity-preserving
+restart.
+
 ## References
 
 - Canton releases: https://github.com/digital-asset/canton/releases
 - Example configs this is based on: `community/app/src/pack/examples/01-simple-topology`
   and `02-multiple-sequencers-and-mediators` in the `digital-asset/canton` repo
-- `07-repair` example in the same repo — relevant for plan step 2 (export/import ACS)
+- `07-repair` example in the same repo — a synchronizer-migration scenario,
+  not the same as plan step 2, but same command family

@@ -27,13 +27,31 @@ de alcance, ajustar acá y dejar la razón como comentario en el commit.
       end-to-end desde cero y corrido 2 veces más para confirmar que
       reutiliza parties y contrato existentes en vez de duplicar
 
-## 2. Export ACS → import ACS a mano por consola — **crítico, día 1**
+## 2. Export ACS → import ACS a mano por consola — **crítico, día 1** ✅ funciona
 
-- [ ] Con el contrato del paso 1 activo, exportar el ACS de un participante
-      por consola (ver ejemplo oficial `07-repair` en el repo de Canton)
-- [ ] Importarlo en un participante vacío por consola, a mano
-- [ ] Confirmar que el estado restaurado permite operar con normalidad
-- [ ] Si esto no funciona: replantear el approach antes de seguir con nada más
+- [x] Con el contrato del paso 1 activo, exportar el ACS de un participante
+      por consola — `participant.repair.export_acs(...)`, probado contra el
+      binario real (no es el mismo mecanismo que el ejemplo `07-repair`, que
+      es sobre migración de synchronizer, pero misma familia de comandos)
+- [x] Importarlo en un participante vacío por consola, a mano —
+      `participant.repair.import_acs(...)`, ver `infra/canton/recover-test.canton`
+      y "Step 2 findings" en `infra/README.md` para los dos requisitos no
+      obvios que encontré (storage persistente, no memoria; desconectar del
+      synchronizer antes de importar)
+- [x] Confirmar que el estado restaurado permite operar con normalidad —
+      el contrato importado es legible y correcto vía la Ledger API del
+      participante que lo recibió (verificado por HTTP). Someter una
+      transacción *como* la party recuperada no funcionó de entrada porque
+      probé contra una identidad de participante distinta a propósito — eso
+      es exactamente la recuperación de identidad/hosting que el CLAUDE.md ya
+      declaraba fuera de alcance, no una falla del mecanismo de estado
+- [x] Si esto no funciona: replantear — no hizo falta, funcionó
+
+**Hallazgo que cambia el paso 3:** el nodo que recupera necesita storage en
+base de datos (H2 o Postgres), no memoria — `import_acs` lo rechaza
+explícitamente. El docker-compose actual (paso 0) usa memoria en los 3
+participantes; hay que revisar esto al automatizar backup/restore desde el
+agente.
 
 ## 3. Automatizar backup/restore end-to-end desde el agente
 
