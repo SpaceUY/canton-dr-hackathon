@@ -277,24 +277,34 @@ restart.
 - **`SynchronizerTimeRange` needed an explicit import** — unlike
   `PositiveInt`, `StaticSynchronizerParameters`, etc. used elsewhere in this
   project's `.canton` scripts, it's not in the console's default scope.
-- **`lookup_sent_acs_commitments` returned `Map()` in every test run here**,
-  including with zero filters (`Seq.empty` for time ranges, counterparties,
-  and states — "give me everything"), well past the default 1-minute
-  reconciliation interval. `get_intervals_behind_for_counter_participants`
-  *does* return real data for the same pair (confirms Canton is tracking
-  the relationship, 0 intervals behind). Read as: a closed, queryable
-  commitment period needs more elapsed real time than a short test window
-  gives it — not a broken command. `check-commitment` reports both rather
-  than hiding the empty one; re-verify with the topology left running
-  longer before the actual demo.
-- **This intentionally does not close the loop** — comparing a commitment
-  hash against a freshly recomputed one only proves something when the
-  *same* participant identity is recovering (the commitment history is
-  tied to that identity). This project's recovery target (`participant4`)
-  is a deliberate stand-in with a fresh identity — see step 2's findings —
-  so there is nothing of its own to compare yet. What's proven here is that
-  the real command surface exists, connects, and returns real structured
-  data for an active counterparty pair.
+- **`lookup_sent_acs_commitments` returned `Map()` in every test run at
+  first, including with zero filters, well past the default 1-minute
+  reconciliation interval.** Originally read as "needs more elapsed real
+  time" — that guess was wrong, and left uninvestigated further at the
+  time. The real cause, confirmed by reading Canton's own source
+  (`community/participant/.../GrpcParticipantInspectionService.scala`,
+  `validateSynchronizerTimeRange`, from the public `digital-asset/canton`
+  GitHub repo): the script passed `None` for the time range, and `None`
+  does **not** mean "all history" — it collapses to a single-instant window
+  at the participant's own last-computed-and-sent timestamp, which only by
+  luck lines up with a commitment for one specific counterparty. Canton's
+  own integration tests (`AcsCommitmentToolingIntegrationTest.scala`)
+  always pass an explicit `Some(TimeRange(...))`, never `None`. Fixed by
+  passing `Some(TimeRange(CantonTimestamp.Epoch, CantonTimestamp.now()))`.
+  Re-verified live against the running stack, 3 times, for both custodian
+  pairs: 14 historical commitment periods came back, each with a real
+  SHA-256 hash independently computed by both participants and a `Match`
+  state.
+- **What this proves and what it still doesn't:** this is real cryptographic
+  proof that two independent participant nodes agree on a hash of the state
+  they share — not just confirmation that the command surface exists.
+  It does **not** close the recovery loop end-to-end: comparing a
+  commitment hash against a freshly recomputed one after a disaster only
+  proves something when the *same* participant identity is recovering (the
+  commitment history is tied to that identity). This project's recovery
+  target (`participant4`) is a deliberate stand-in with a fresh identity —
+  see step 2's findings — so there is no prior commitment history of its
+  own to compare against yet.
 
 ## Step 7 findings (dashboard + ui/)
 

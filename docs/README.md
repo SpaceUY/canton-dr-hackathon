@@ -140,6 +140,29 @@ To prove the custodian never saw plaintext, show the raw stored blob:
 docker run --rm -v infra_agent2_custody:/data alpine sh -c "xxd /data/demo/blob.enc | head -5"
 ```
 
+## 7. Show the cryptographic proof (ACS commitments)
+
+This is the other half of the pitch's one-liner: proof the shared state is
+correct, independent of the backup. Ask a custodian what it independently
+computed and matched about its shared state with the owner:
+
+```sh
+docker compose run --rm agent check-commitment --counterparty-participant participant2 --about-participant participant1
+```
+
+The output lists real, historical commitment periods (one per minute), each
+with the SHA-256 hash `participant1` and `participant2` computed
+*independently* and its match state — `Match` means both sides agree on the
+shared state without either trusting the other, or the backup. This works
+for any custodian pair (swap in `participant3`) and needs no prior setup
+beyond the policy from step 4 — the topology has been computing these in
+the background the whole time.
+
+Note this only verifies the *pre-disaster* state — the recovery target
+(`participant4`) is a stand-in with a fresh identity (step 6, deliberately
+out of scope), so it has no commitment history of its own yet to check
+against.
+
 ## Resetting between runs
 
 `participant4` and the 3 agents keep state in named Docker volumes, so a

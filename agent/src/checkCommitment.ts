@@ -13,27 +13,33 @@ export interface CheckCommitmentOptions {
 // state with `aboutParticipant` — real Canton data, not something derived
 // from the backup itself, so it can't be spoofed by whoever held the blob.
 //
-// Two commands, because testing this exposed a real gap between them:
-// `get_intervals_behind_for_counter_participants` reliably returns real
-// data (confirms the pair is tracked and how caught-up it is), but
-// `lookup_sent_acs_commitments` came back empty in every test run here even
-// well past the default 1-minute reconciliation interval — a closed
-// commitment period apparently needs more elapsed real time than a short
-// test window gives it. Reporting both rather than hiding the empty one.
+// Earlier version passed `None` as the time range and got `Map()` back
+// every time, which read as "needs more elapsed real time". That guess was
+// wrong: per Canton's own source (GrpcParticipantInspectionService.
+// validateSynchronizerTimeRange), a synchronizer entry with no `TimeRange`
+// collapses to a single-instant window at the participant's global
+// last-computed-and-sent timestamp — not "all history" — so it only hits by
+// luck if that exact instant includes a commitment for this specific
+// counterparty. Passing an explicit wide range (epoch to now) fixes it:
+// this returns every historical commitment period for the pair, each with
+// the real SHA-256 hash both sides computed independently and its match
+// state (Match/Mismatch/NotCompared) — the actual cryptographic proof, not
+// just confirmation the command surface exists.
 //
 // This does not compare either result against a freshly recomputed
 // commitment from a recovered node: that comparison only means something
 // for the *same* participant identity recovering (see docs/ROADMAP.md step
 // 6) — this project's recovery target is a stand-in with a fresh identity,
 // which by definition has no commitment history to compare against. What
-// this proves is that the real command surface exists and returns real
-// data for an active pair.
+// this proves is that two independent, real participant nodes computed and
+// exchanged matching cryptographic commitments over the shared state.
 export async function checkCommitment(options: CheckCommitmentOptions): Promise<string> {
   const { counterpartyParticipant, aboutParticipant, synchronizerAlias } = options;
   const alias = synchronizerAlias ?? "da";
 
   const script = `
-import com.digitalasset.canton.admin.api.client.commands.ParticipantAdminCommands.Inspection.SynchronizerTimeRange
+import com.digitalasset.canton.admin.api.client.commands.ParticipantAdminCommands.Inspection.{SynchronizerTimeRange, TimeRange}
+import com.digitalasset.canton.data.CantonTimestamp
 
 val target = ${counterpartyParticipant}
 val synchronizerId = target.synchronizers.id_of("${alias}")
@@ -46,7 +52,7 @@ val behind = target.commitments.get_intervals_behind_for_counter_participants(
 )
 
 val sent = target.commitments.lookup_sent_acs_commitments(
-  Seq(SynchronizerTimeRange(synchronizerId, None)),
+  Seq(SynchronizerTimeRange(synchronizerId, Some(TimeRange(CantonTimestamp.Epoch, CantonTimestamp.now())))),
   Seq(counterpartyId),
   Seq.empty,
   true,

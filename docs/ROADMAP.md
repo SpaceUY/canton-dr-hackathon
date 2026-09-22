@@ -154,7 +154,7 @@ same ciphertext) → `challenge` → `respond`, and confirmed via API that the
 `ChallengeResponse` survives. `challenge-loop` run separately and confirmed
 to fire repeated rounds against both custodians without dying.
 
-## 6. Verification against counterparties' commitments ✅ (scope adjusted, see below)
+## 6. Verification against counterparties' commitments ✅ works (scope adjusted, see below)
 
 - [x] Confirm the commitment command names for the hackathon's
       Canton version — confirmed via bytecode and tested against the
@@ -166,23 +166,36 @@ to fire repeated rounds against both custodians without dying.
       `daml/BackupPolicy.daml`, commands `agent request-recovery` /
       `agent respond-recovery`
 - [x] Validate the reconstructed ACS against the commitments — **scope
-      deliberately adjusted**: the "real" comparison (recomputing a
-      hash and comparing it against what the counterparty already had)
-      only means something when the SAME participant identity is
-      recovering — and `participant4` is a stand-in with a fresh identity on
-      purpose (see step 2's findings). What is proven: the
-      real command (`agent check-commitment`) connects and returns real,
-      structured data from an active counterparty — it's not a local
-      operation, exactly as the original CLAUDE.md already declared
+      deliberately adjusted, but the mechanism itself is now proven, not
+      just reachable**: `agent check-commitment` returns 14 real historical
+      commitment periods with SHA-256 hashes independently computed by both
+      participants, all `Match` (see the finding below) — genuine
+      cryptographic proof of a correct shared state. What's still adjusted:
+      comparing against the *specific recovered* state only means something
+      when the SAME participant identity is recovering, and `participant4`
+      is a stand-in with a fresh identity on purpose (see step 2's
+      findings), so there's nothing of its own yet to check post-recovery —
+      exactly as the original CLAUDE.md already declared
 
-**Finding, not a bug:** `lookup_sent_acs_commitments` returned an empty
-`Map()` in every test run, even with no filters and well past the
-default reconciliation interval (1 minute). `get_intervals_behind_for_counter_participants`
-does return real data for the same pair of nodes (confirms Canton is tracking
-the relationship, 0 intervals behind). Reading: a closed, queryable
+**Bug found and fixed, not just "needs more time":** `lookup_sent_acs_commitments`
+returned an empty `Map()` in every test run, even with no filters and well
+past the 1-minute reconciliation interval — first read as "a closed
 commitment period needs more elapsed real time than a short test window
-gives it — the command isn't broken. See "Step 6 findings" in
-`infra/README.md` for the full detail (includes two own bugs: the
+gives it". That reading was wrong. Read straight from Canton's own source
+(`GrpcParticipantInspectionService.validateSynchronizerTimeRange`, confirmed
+against the real `digital-asset/canton` GitHub repo): passing `None` for
+the time range doesn't mean "all history" — it collapses to a single-instant
+window at the participant's global last-computed-and-sent timestamp, which
+only by luck lines up with a commitment for one specific counterparty.
+Passing an explicit wide range (`CantonTimestamp.Epoch` to `now()`) fixes
+it: `check-commitment` now returns every historical commitment period for
+the pair, each with a real SHA-256 hash both sides computed independently
+and its match state. Verified live against the real stack, 3 times, for
+both custodian pairs (`participant1↔participant2` and `participant1↔participant3`):
+14 periods, all `Match`. This is the actual cryptographic proof — two
+independent nodes agreeing on a hash of shared state, not just confirmation
+that the command surface exists. See "Step 6 findings" in
+`infra/README.md` for the full detail (includes two more own bugs: the
 parameter names I pulled from the bytecode were wrong —
 `javap` doesn't preserve Scala named-parameter names, had to
 call positionally instead — and `SynchronizerTimeRange` needed an
