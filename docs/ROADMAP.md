@@ -82,13 +82,53 @@ actuar como separador, y las funciones `backup`/`restore` no devolvían nada
 imprimible — el `println` del script de Canton quedaba atrapado adentro y
 la corrida "exitosa" no mostraba ninguna confirmación.
 
-## 4. Cifrado + Shamir k-de-n + distribución entre custodios
+## 4. Cifrado + Shamir k-de-n + distribución entre custodios ✅ funciona
 
-- [ ] Cifrar el blob de estado antes de guardarlo/enviarlo
-- [ ] Partir la clave de cifrado en fragmentos k-de-n (Shamir)
-- [ ] Distribuir blob cifrado + fragmentos entre los custodios (HTTP directo,
-      fuera de Canton)
-- [ ] Reconstruir la clave con k de n fragmentos y descifrar en recovery
+Esquema: **k=2, n=3 incluyendo al owner** como uno de los 3 shareholders
+(no hacía falta un 4to nodo custodio) — así, cuando el owner es el que
+pierde la base, se recupera igual con los 2 fragments que quedaron en los
+custodios externos.
+
+- [x] Cifrar el blob de estado antes de guardarlo/enviarlo — AES-256-GCM
+      (`agent/src/crypto.ts`, `node:crypto`)
+- [x] Partir la clave de cifrado en fragmentos k-de-n (Shamir) —
+      `shamir-secret-sharing` (librería TS auditada de Privy, cero deps)
+- [x] Distribuir blob cifrado + fragmentos entre los custodios (HTTP directo,
+      fuera de Canton) — `agent distribute`, empuja a los 3 endpoints
+      (incluyendo el propio owner) vía PUT
+- [x] Reconstruir la clave con k de n fragmentos y descifrar en recovery —
+      `agent recover`, probado explícitamente con solo 2 de los 3 endpoints
+      (salteando el del owner) para no validar solo el happy path
+
+Cada nodo ahora tiene un agente propio (`agent1`/`agent2`/`agent3` en
+`docker-compose.yml`) corriendo `agent serve` — un servidor HTTP que
+recibe y guarda blob+fragment, y los devuelve para la recuperación. El CLI
+para disparar comandos (`backup`/`restore`/`distribute`/`recover`) sigue
+siendo el servicio `agent` separado — ver el bug de DNS más abajo.
+
+**Verificado que el custodio nunca ve el plaintext:** inspeccioné el
+archivo guardado en el volumen de `agent2` directamente — son bytes de alta
+entropía, sin estructura reconocible.
+
+**Bugs encontrados armando esto** (todos corregidos, ver commit):
+- `shamir-secret-sharing` valida `secret.constructor !== Uint8Array` a
+  rajatabla — un `Buffer` de Node (lo que devuelven `crypto.randomBytes` y
+  `fs.readFile`) es subclase de `Uint8Array` pero falla ese chequeo. Hubo
+  que convertir explícitamente con `new Uint8Array(...)`.
+- El `fetch()` global de Node tampoco acepta un `Buffer` como `body` (error
+  de tipos en compilación) — mismo fix.
+- **El bug más caro:** al principio hice que `agent1`/`agent2`/`agent3`
+  también corrieran los comandos CLI (`docker compose run agent1
+  distribute ...`), pero eso crea un *segundo* contenedor que comparte el
+  alias de red "agent1" con el servidor `serve` ya corriendo — el DNS
+  embebido de Docker resolvió el auto-push del owner hacia el contenedor
+  sin servidor, dando `ECONNREFUSED`. Separé el rol: `agent1/2/3` solo
+  sirven HTTP, el servicio `agent` (sin hostname) corre los comandos.
+- La máquina de desarrollo está al límite de memoria con las 5 JVMs de
+  Canton + los 3 agentes arriba a la vez (~6GB contra un límite de 7.65GB
+  en Docker Desktop) — se mataron `participant3` y `participant4` por OOM
+  durante las pruebas. No es un bug de código, pero hay que subir el límite
+  de memoria de Docker Desktop antes del día de la demo.
 
 ## 5. Modelo Daml de registro y desafíos periódicos
 

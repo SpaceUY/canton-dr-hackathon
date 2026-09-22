@@ -119,20 +119,81 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
-  # The backup/restore CLI (plan step 3), no cipher/shards yet. No volume
-  # shared with any participant — confirmed in infra/README.md that the
-  # exported ACS travels over the admin API, not shared disk. Invoke ad hoc:
+  # `agentN` is the custodian side only: the long-running `serve` HTTP
+  # server that stores/returns blob+share for a policy. Deliberately NOT
+  # also used to run CLI commands — `docker compose run agent1 ...` starts
+  # a *second*, separate container that shares the "agent1" DNS alias with
+  # the already-running server, and Docker's embedded DNS resolved
+  # self-pushes (an owner endpoint distributing to itself) to that
+  # ephemeral, server-less container instead — ECONNREFUSED. Run every
+  # command (including ones that target agent1/2/3 as endpoints) from the
+  # separate `agent` service below instead.
+  agent1:
+    build: ../agent
+    hostname: agent1
+    command: ["serve", "--port", "4001"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+      - agent1_custody:/canton/custody
+    ports:
+      - "4001:4001"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4001)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  agent2:
+    build: ../agent
+    hostname: agent2
+    command: ["serve", "--port", "4002"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+      - agent2_custody:/canton/custody
+    ports:
+      - "4002:4002"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4002)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  agent3:
+    build: ../agent
+    hostname: agent3
+    command: ["serve", "--port", "4003"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+      - agent3_custody:/canton/custody
+    ports:
+      - "4003:4003"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4003)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # The CLI runner — no hostname, not an endpoint anyone pushes to or
+  # fetches from, so it can't collide with agent1/2/3's own alias. Invoke
+  # ad hoc:
   #   docker compose run --rm agent backup --source participant1 --party owner --out /canton/exports/owner_acs.gz
   #   docker compose run --rm agent restore --target participant4 --in /canton/exports/owner_acs.gz
+  #   docker compose run --rm agent distribute --source participant1 --party owner --policy-id demo \
+  #     --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
+  #   docker compose run --rm agent recover --target participant4 --policy-id demo \
+  #     --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
   agent:
     build: ../agent
     volumes:
       - ./canton:/canton/user-config:ro
       - agent_exports:/canton/exports
-    depends_on:
-      seed:
-        condition: service_completed_successfully
 
 volumes:
   participant4_data:
   agent_exports:
+  agent1_custody:
+  agent2_custody:
+  agent3_custody:
