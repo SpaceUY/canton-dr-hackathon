@@ -185,11 +185,27 @@ services:
   #     --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
   #   docker compose run --rm agent recover --target participant4 --policy-id demo \
   #     --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
+  #
+  # Step 5 (accept-custody, respond) reads a share/blob straight out of the
+  # relevant agentN's custody volume via --as agentN — read-only, since only
+  # that agentN's own `serve` process should ever write there.
+  #   docker compose run --rm agent create-policy --owner-participant participant1:5013 --owner owner \
+  #     --custodian participant2:5023:custodian2 --custodian participant3:5033:custodian3 \
+  #     --k 2 --n 3 --frequency-hours 1 --policy-id demo
+  #   docker compose run --rm agent accept-custody --as agent2 --participant participant2:5023 --custodian custodian2 \
+  #     --owner-participant participant1:5013 --owner owner --policy-id demo
+  #   docker compose run --rm agent challenge --owner-participant participant1:5013 --owner owner \
+  #     --custodian-participant participant2:5023 --custodian custodian2 --policy-id demo --challenge-id ch-1
+  #   docker compose run --rm agent respond --as agent2 --participant participant2:5023 --custodian custodian2 \
+  #     --policy-id demo --challenge-id ch-1
   agent:
     build: ../agent
     volumes:
       - ./canton:/canton/user-config:ro
       - agent_exports:/canton/exports
+      - agent1_custody:/canton/custody/agent1:ro
+      - agent2_custody:/canton/custody/agent2:ro
+      - agent3_custody:/canton/custody/agent3:ro
 
 volumes:
   participant4_data:

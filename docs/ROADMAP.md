@@ -130,21 +130,72 @@ entropía, sin estructura reconocible.
   durante las pruebas. No es un bug de código, pero hay que subir el límite
   de memoria de Docker Desktop antes del día de la demo.
 
-## 5. Modelo Daml de registro y desafíos periódicos
+## 5. Modelo Daml de registro y desafíos periódicos ✅ funciona
 
-- [ ] `BackupPolicy`: dueño, custodios, k, n, frecuencia
-- [ ] `CustodianAgreement`: cada custodio acepta y deja constancia de qué
-      recibió
-- [ ] `Challenge` / `ChallengeResponse`: desafío periódico y su prueba
-- [ ] Job/trigger que dispare desafíos según la frecuencia de la política
+- [x] `BackupPolicy`: dueño, custodios, k, n, frecuencia — `daml/BackupPolicy.daml`.
+      `custodians` lista solo a los 2 externos (n=3 incluye al owner por la
+      decisión del paso 4, pero nadie se desafía a sí mismo)
+- [x] `CustodianAgreement`: cada custodio acepta y deja constancia de qué
+      recibió — un hash SHA-256 del blob cifrado, nunca el blob ni el share
+- [x] `Challenge` / `ChallengeResponse`: desafío periódico y su prueba —
+      la prueba es `HMAC-SHA256(share, challengeId)`, calculada por
+      `agent respond` con el share local, que nunca sale del custodio
+- [x] Job/trigger que dispare desafíos según la frecuencia de la política —
+      `agent challenge-loop` (loop simple en el agente, no un Daml Trigger
+      completo — de más para lo que un demo necesita)
 
-## 6. Verificación contra los commitments de las contrapartes
+Comandos nuevos: `agent create-policy`, `agent accept-custody`,
+`agent challenge`, `agent respond`, `agent challenge-loop` — ver
+"Run it" y "Step 5 findings" en `infra/README.md`.
 
-- [ ] Confirmar los nombres de comando de commitments para la versión de
-      Canton del hackathon (3.5.x — ya confirmado acá, revalidar si cambia)
-- [ ] `RecoveryRequest`: el dueño pide devolución, los custodios responden
-- [ ] Validar el ACS reconstruido contra los commitments que la contraparte
-      ya tiene guardados (no es una operación local — hay que pedírselo)
+Probado end-to-end contra Docker real: `create-policy` → `distribute` →
+`accept-custody` (los 2 custodios, mismo blobHash porque reciben el mismo
+ciphertext) → `challenge` → `respond`, y confirmado por API que el
+`Challenge` quedó archivado (no huérfano) y solo sobrevive el
+`ChallengeResponse`. `challenge-loop` corrido aparte y confirmado que
+dispara rondas repetidas a ambos custodios sin caerse.
+
+## 6. Verificación contra los commitments de las contrapartes ✅ (alcance ajustado, ver abajo)
+
+- [x] Confirmar los nombres de comando de commitments para la versión de
+      Canton del hackathon — confirmado por bytecode y probado contra el
+      binario real: `commitments.lookup_sent_acs_commitments`,
+      `lookup_received_acs_commitments`, `open_commitment`,
+      `get_intervals_behind_for_counter_participants`
+- [x] `RecoveryRequest`: el dueño pide devolución, los custodios responden —
+      mismo patrón que `Challenge`/`ChallengeResponse` en
+      `daml/BackupPolicy.daml`, comandos `agent request-recovery` /
+      `agent respond-recovery`
+- [x] Validar el ACS reconstruido contra los commitments — **alcance
+      ajustado a propósito**: la comparación "de verdad" (recalcular un
+      hash y compararlo contra el que la contraparte ya tenía) solo
+      significa algo cuando es la MISMA identidad de participante la que se
+      recupera — y `participant4` es un doble con identidad nueva a
+      propósito (ver hallazgos del paso 2). Lo que sí se prueba: el comando
+      real (`agent check-commitment`) conecta y trae datos reales y
+      estructurados de una contraparte activa — no es una operación local,
+      tal como ya declaraba el CLAUDE.md original
+
+**Hallazgo, no bug:** `lookup_sent_acs_commitments` devolvió `Map()` vacío
+en todas las corridas de prueba, incluso sin filtros y bastante después del
+intervalo de reconciliación por defecto (1 minuto). `get_intervals_behind_for_counter_participants`
+sí trae datos reales para el mismo par de nodos (confirma que Canton sigue
+la relación, 0 intervalos de atraso). Lectura: un período de commitment
+cerrado y consultable necesita más tiempo real transcurrido que una ventana
+de prueba corta — no es que el comando esté roto. Ver "Step 6 findings" en
+`infra/README.md` para el detalle completo (incluye dos bugs propios: los
+nombres de parámetros que saqué del bytecode eran incorrectos —
+`javap` no preserva nombres de parámetros con nombre de Scala, hubo que
+llamar posicionalmente — y `SynchronizerTimeRange` necesitaba un import
+explícito).
+
+**Hallazgo de la prueba de regresión completa, no de este paso puntual:**
+`create-policy`, `accept-custody`, `challenge` y `request-recovery` no eran
+idempotentes — un timeout del lado del cliente (un 503 real bajo presión
+de memoria, no hipotético) no significa que el servidor no haya procesado
+igual el comando. Reintentar `accept-custody` después de uno dejó un
+`CustodianAgreement` duplicado. Los cuatro comandos ahora chequean si ya
+existe el contrato antes de crear.
 
 ## 7. UI mínima
 

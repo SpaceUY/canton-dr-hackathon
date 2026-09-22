@@ -14,7 +14,10 @@ visible in `participant1/2/3`'s ACS, `agent backup`/`agent restore` move
 that contract's state from `participant1` into empty `participant4`, and
 `agent distribute`/`agent recover` do the same thing encrypted and
 Shamir-split across `agent1`/`agent2`/`agent3` (k=2, n=3) — reconstructed
-and restored using only 2 of the 3 shares.
+and restored using only 2 of the 3 shares — and the on-ledger registry
+(`agent create-policy`/`accept-custody`/`challenge`/`respond`, see
+`../daml/BackupPolicy.daml`) records custody and periodic proof-of-possession
+without ever putting the blob or a share on the ledger.
 
 ## Run it
 
@@ -39,6 +42,32 @@ docker compose run --rm agent distribute --source participant1 --party owner --p
 # recovers with only 2 of the 3 endpoints — proves the threshold, not just the happy path
 docker compose run --rm agent recover --target participant4 --policy-id demo \
   --endpoints http://agent2:4002,http://agent3:4003 --k 2
+
+# plan step 5: the on-ledger registry — run after distribute (accept-custody
+# hashes the blob distribute already pushed into each agentN's custody volume)
+docker compose run --rm agent create-policy --owner-participant participant1:5013 --owner owner \
+  --custodian participant2:5023:custodian2 --custodian participant3:5033:custodian3 \
+  --k 2 --n 3 --frequency-hours 1 --policy-id demo
+docker compose run --rm agent accept-custody --as agent2 --participant participant2:5023 --custodian custodian2 \
+  --owner-participant participant1:5013 --owner owner --policy-id demo
+docker compose run --rm agent accept-custody --as agent3 --participant participant3:5033 --custodian custodian3 \
+  --owner-participant participant1:5013 --owner owner --policy-id demo
+docker compose run --rm agent challenge --owner-participant participant1:5013 --owner owner \
+  --custodian-participant participant2:5023 --custodian custodian2 --policy-id demo --challenge-id ch-1
+docker compose run --rm agent respond --as agent2 --participant participant2:5023 --custodian custodian2 \
+  --policy-id demo --challenge-id ch-1
+# periodic version of `challenge`, one round per custodian every --interval-seconds, runs until killed
+docker compose run -d --name challenge-loop agent challenge-loop --owner-participant participant1:5013 --owner owner \
+  --custodian participant2:5023:custodian2 --custodian participant3:5033:custodian3 \
+  --policy-id demo --interval-seconds 3600
+
+# plan step 6: same RecoveryRequest/RecoveryResponse pattern as challenge/respond,
+# plus a real query against the counterparty's own ACS commitment records
+docker compose run --rm agent request-recovery --owner-participant participant1:5013 --owner owner \
+  --custodian-participant participant2:5023 --custodian custodian2 --policy-id demo --request-id req-1
+docker compose run --rm agent respond-recovery --as agent2 --participant participant2:5023 --custodian custodian2 \
+  --policy-id demo --request-id req-1
+docker compose run --rm agent check-commitment --counterparty-participant participant2 --about-participant participant1
 ```
 
 Ledger APIs are exposed on the host at `localhost:5011` (participant1),
@@ -138,6 +167,12 @@ found the hard way, not documented anywhere obvious:
 - Both nodes, and whatever config runs the console script itself, need
   `canton.features.enable-repair-commands = true` and
   `enable-testing-commands = true` — these are gated behind feature flags.
+- **`import_acs` is idempotent for a contract the target already has.**
+  Ran a full regression pass (`agent restore` into `participant4`, then
+  later `agent recover` for the same contract into the same already-populated
+  `participant4`) — the second import neither failed nor duplicated the
+  contract (confirmed by count). Useful in practice: a retried or
+  overlapping recovery attempt isn't destructive.
 
 What's proven and what isn't: the imported contract is immediately visible
 and correct via the importing participant's own Ledger API (queried its ACS
@@ -181,6 +216,81 @@ restart.
   testing. Not a code bug, but raise Docker Desktop's memory limit before
   demo day or the recovery mid-demo risks taking out an unrelated
   container.
+
+## Step 5 findings (BackupPolicy registry + challenges)
+
+- **`custodians` on `BackupPolicy` lists only the 2 external custodians,
+  not the owner** — even though n=3 includes the owner as a shareholder
+  (step 4). Challenging yourself for proof of possession is meaningless,
+  so the registry only tracks the relationship that actually needs
+  policing.
+- **Nothing secret ever reaches the ledger.** `CustodianAgreement` carries
+  a SHA-256 hash of the encrypted blob (both custodians recorded the exact
+  same hash in testing — expected, since `distribute` sends every endpoint
+  the identical ciphertext). `ChallengeResponse` carries
+  `HMAC-SHA256(share, challengeId)`, computed by `agent respond` from the
+  share sitting in that custodian's own custody volume — the share itself
+  never leaves the container, on-chain or off.
+- **`accept-custody`/`respond` read straight out of another service's
+  volume** (`agentN_custody`, mounted read-only into the generic `agent`
+  runner at `/canton/custody/agentN`) rather than going over HTTP to that
+  agent's own server. Deliberate: it sidesteps the DNS-alias collision from
+  step 4 entirely, since it's a local file read, not a self-request.
+- **`challenge-loop` is a plain interval loop in the agent process, not a
+  Daml Trigger.** A real Trigger would fire off-ledger even if no agent
+  happened to be running the loop at the right moment, but wiring up the
+  Triggers runtime was a lot of extra machinery for what a demo needs —
+  revisit if this becomes more than a hackathon prototype.
+- Verified the full cycle end to end: `create-policy` → `distribute` →
+  `accept-custody` (both custodians) → `challenge` → `respond`, then
+  confirmed on-ledger that the `Challenge` was consumed (archived) and
+  only the `ChallengeResponse` remained — and separately ran
+  `challenge-loop` long enough to see multiple rounds fire against both
+  custodians without dying.
+- **Found during a full regression pass, not while building the feature:**
+  `create-policy`, `accept-custody`, `challenge`, and `request-recovery` were
+  not idempotent — a client-side timeout (a real `503` under memory
+  pressure, not hypothetical) doesn't mean the server didn't still commit
+  the command. Retrying `accept-custody` after one duplicated the
+  `CustodianAgreement` (confirmed by count: 3 active contracts, `custodian2`
+  appearing twice). All four now check for an existing matching contract
+  first and skip instead of blindly creating.
+
+## Step 6 findings (RecoveryRequest/RecoveryResponse + real ACS commitments)
+
+- **The console command names from `../CLAUDE.md`'s open question are
+  confirmed for Canton 3.5.18**: `participant.commitments.lookup_sent_acs_commitments`,
+  `lookup_received_acs_commitments`, `open_commitment`,
+  `get_intervals_behind_for_counter_participants`. None are in the JSON
+  Ledger API — `agent/src/checkCommitment.ts` shells out to the console like
+  `backup`/`restore`/`distribute`/`recover` already do.
+- **The parameter names from bytecode (`javap`) were wrong** — Java
+  bytecode doesn't preserve Scala named-parameter names, so
+  `timeRanges = ...`, `states = ...` etc. (guessed from decompiled method
+  signatures) failed with `unknown parameter name`. Fixed by calling
+  positionally instead — only the *order* and *types* from bytecode were
+  trustworthy, not the names.
+- **`SynchronizerTimeRange` needed an explicit import** — unlike
+  `PositiveInt`, `StaticSynchronizerParameters`, etc. used elsewhere in this
+  project's `.canton` scripts, it's not in the console's default scope.
+- **`lookup_sent_acs_commitments` returned `Map()` in every test run here**,
+  including with zero filters (`Seq.empty` for time ranges, counterparties,
+  and states — "give me everything"), well past the default 1-minute
+  reconciliation interval. `get_intervals_behind_for_counter_participants`
+  *does* return real data for the same pair (confirms Canton is tracking
+  the relationship, 0 intervals behind). Read as: a closed, queryable
+  commitment period needs more elapsed real time than a short test window
+  gives it — not a broken command. `check-commitment` reports both rather
+  than hiding the empty one; re-verify with the topology left running
+  longer before the actual demo.
+- **This intentionally does not close the loop** — comparing a commitment
+  hash against a freshly recomputed one only proves something when the
+  *same* participant identity is recovering (the commitment history is
+  tied to that identity). This project's recovery target (`participant4`)
+  is a deliberate stand-in with a fresh identity — see step 2's findings —
+  so there is nothing of its own to compare yet. What's proven here is that
+  the real command surface exists, connects, and returns real structured
+  data for an active counterparty pair.
 
 ## References
 
