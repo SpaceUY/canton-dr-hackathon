@@ -3,8 +3,14 @@ import { fetchStatus, triggerRecover, type CustodianStatus, type StatusView } fr
 
 // Hardcoded to this project's own demo topology (see infra/docker-compose.yml)
 // — a minimal UI, not a general-purpose admin tool.
+//
+// These endpoints are used by the `dashboard` container itself (its
+// POST /recover handler calls the agents directly) — not by the browser —
+// so they must be Docker-internal hostnames (agent2/agent3), not
+// localhost. localhost from inside a container means that container
+// itself, which is exactly why this was "fetch failed" the first time.
 const RECOVER_TARGET = "participant4";
-const RECOVER_ENDPOINTS = ["http://localhost:4002", "http://localhost:4003"];
+const RECOVER_ENDPOINTS = ["http://agent2:4002", "http://agent3:4003"];
 const RECOVER_K = 2;
 
 const STATUS_LABEL: Record<CustodianStatus, string> = {

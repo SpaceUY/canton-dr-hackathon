@@ -196,7 +196,7 @@ the command. Retrying `accept-custody` after one left a duplicated
 `CustodianAgreement`. All four commands now check whether the
 contract already exists before creating it.
 
-## 7. Minimal UI ✅ works (browser visual check still pending)
+## 7. Minimal UI ✅ works, verified in a real browser
 
 - [x] Custodian status (active / degraded) — table with status
       derived from `CustodianAgreement`/`Challenge`/`ChallengeResponse`
@@ -207,12 +207,20 @@ contract already exists before creating it.
 
 New: `agent/src/dashboard.ts` (`dashboard` service in docker-compose,
 port 4010) + `ui/` (React + Vite + TypeScript, without Redux/RTK Query/Tailwind
-— see "Step 7 findings" in `infra/README.md` for why). The `/status`
-and `/recover` endpoints were tested via curl end-to-end (two custodians in
-different states, and a real recovery verified on `participant4`) —
-**visual verification in a real browser is still pending**, no browser tool
-was available in this environment. Open `http://localhost:5173` yourself
-before relying on this for the demo.
+— see "Step 7 findings" in `infra/README.md` for why).
+
+**Real bug, found by clicking the button, not by curl or typecheck:**
+`RECOVER_ENDPOINTS` in `ui/src/App.tsx` used `localhost:4002`/`localhost:4003`.
+Those endpoints are consumed by the `dashboard` *container*'s `/recover`
+handler server-side, not by the browser — inside that container,
+`localhost` means the `dashboard` container itself, which isn't listening
+on those ports. Failed with an unhelpful `{"error":"fetch failed"}` and no
+other clue. curl-testing the same endpoint from the host didn't catch it,
+because curl from the host naturally used the correct `agent2`/`agent3`
+hostnames. Fixed to `agent2`/`agent3`. This is exactly why the "browser
+visual check" this step's docs used to flag as pending mattered: the CLI,
+curl, and the UI don't all exercise the same code path from the same
+origin, so nothing except a real click was going to surface this one.
 
 ## Demo (5 minutes)
 

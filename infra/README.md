@@ -315,16 +315,27 @@ restart.
   `dashboard` (`access-control-allow-origin: *`) — containerizing a
   frontend dev server buys nothing here.
 - Verified end to end: seeded a policy where one custodian accepted
-  custody and got a challenge (shows "Esperando respuesta") and the other
-  never accepted (shows "Sin custodia aceptada") — confirmed via `curl
+  custody and got a challenge (shows "Awaiting response") and the other
+  never accepted (shows "No challenge yet") — confirmed via `curl
   /status` that both states come through correctly — then called `POST
   /recover` directly (what the UI's "Recover" button does) and confirmed
   by querying `participant4`'s ACS afterward that the state landed
-  correctly. **Not verified in an actual browser** — no browser tool was
-  available in this environment; `pnpm run build` compiles cleanly and the
-  dev server serves without errors, but that's not the same as seeing it
-  render. Open `http://localhost:5173` yourself before relying on it for
-  the demo.
+  correctly.
+- **Real bug, found by an actual person clicking the button, not by any
+  automated check:** `RECOVER_ENDPOINTS` in `ui/src/App.tsx` was
+  `["http://localhost:4002", "http://localhost:4003"]`. Those endpoints
+  are used by the `dashboard` *container*'s `/recover` handler (it calls
+  the agents directly, server-side) — not by the browser — so from inside
+  that container `localhost` means the `dashboard` container itself, which
+  has nothing listening on 4002/4003. The button failed with a generic
+  `{"error":"fetch failed"}` and no other clue. `curl`-testing the same
+  endpoint directly from the host didn't catch this, because a curl call
+  from the host naturally used the correct `agent2`/`agent3` hostnames —
+  the bug only existed in the one place (the UI's own hardcoded constant)
+  that got the perspective wrong. Fixed to `["http://agent2:4002",
+  "http://agent3:4003"]`. This is also why "verify in a browser" isn't
+  optional/nice-to-have for this project: the CLI, curl, and the UI don't
+  all exercise the same code path from the same origin.
 
 ## References
 
