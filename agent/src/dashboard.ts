@@ -7,6 +7,15 @@ export interface DashboardOptions {
   ownerParticipant: string;
   ownerPartyHint: string;
   policyId: string;
+  // The only recovery target/endpoints this dashboard will act on — set at
+  // startup (see cli.ts's `dashboard` command), not trusted from the
+  // request body. Without this, `/recover` would run whatever
+  // targetParticipant/endpoints a POST body claims, on an unauthenticated
+  // endpoint (see agent/src/restore.ts's script injection guard for the
+  // other half of this: even a validated endpoint list doesn't help if the
+  // target participant name itself isn't a safe identifier).
+  recoverTarget: string;
+  recoverEndpoints: string[];
 }
 
 type CustodianStatus =
@@ -38,10 +47,10 @@ interface StatusView {
 // server that runs on agent1/2/3) — this is a different concern, run once
 // from wherever the owner's agent is.
 export function startDashboard(options: DashboardOptions): void {
-  const { port, ownerParticipant, ownerPartyHint, policyId } = options;
+  const { port, ownerParticipant, ownerPartyHint, policyId, recoverTarget, recoverEndpoints } = options;
 
   const server = createServer((req, res) => {
-    void handle(req, res, ownerParticipant, ownerPartyHint, policyId);
+    void handle(req, res, ownerParticipant, ownerPartyHint, policyId, recoverTarget, recoverEndpoints);
   });
 
   server.listen(port, () => {
@@ -55,6 +64,8 @@ async function handle(
   ownerParticipant: string,
   ownerPartyHint: string,
   policyId: string,
+  recoverTarget: string,
+  recoverEndpoints: string[],
 ): Promise<void> {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
@@ -78,17 +89,18 @@ async function handle(
         endpoints?: string[];
         k?: number;
       };
-      if (body.targetParticipant === undefined || body.endpoints === undefined || body.k === undefined) {
-        res.writeHead(400, { "content-type": "application/json" }).end(
-          JSON.stringify({ error: "expected { targetParticipant, endpoints, k }" }),
-        );
+
+      const validationError = validateRecoverRequest(body, recoverTarget, recoverEndpoints);
+      if (validationError !== undefined) {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: validationError }));
         return;
       }
+
       const result = await recover({
-        targetParticipant: body.targetParticipant,
+        targetParticipant: body.targetParticipant as string,
         policyId,
-        endpoints: body.endpoints,
-        threshold: body.k,
+        endpoints: body.endpoints as string[],
+        threshold: body.k as number,
       });
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ result }));
       return;
@@ -96,10 +108,34 @@ async function handle(
 
     res.writeHead(404).end();
   } catch (err) {
+    console.error("dashboard request failed:", err);
     res
       .writeHead(500, { "content-type": "application/json" })
-      .end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      .end(JSON.stringify({ error: "internal error" }));
   }
+}
+
+// Every field here is attacker-controlled (this endpoint has no auth) — none
+// of it is trusted just because it round-trips through JSON.parse. Returns
+// an error message, or undefined if the request is valid.
+function validateRecoverRequest(
+  body: { targetParticipant?: string; endpoints?: string[]; k?: number },
+  recoverTarget: string,
+  recoverEndpoints: string[],
+): string | undefined {
+  if (typeof body.targetParticipant !== "string" || body.targetParticipant !== recoverTarget) {
+    return `targetParticipant must be '${recoverTarget}'`;
+  }
+  if (!Array.isArray(body.endpoints) || body.endpoints.length === 0) {
+    return "endpoints must be a non-empty array of strings";
+  }
+  if (!body.endpoints.every((e) => typeof e === "string" && recoverEndpoints.includes(e))) {
+    return `every endpoint must be one of: ${recoverEndpoints.join(", ")}`;
+  }
+  if (typeof body.k !== "number" || !Number.isInteger(body.k) || body.k <= 0) {
+    return "k must be a positive integer";
+  }
+  return undefined;
 }
 
 async function readBody(req: IncomingMessage): Promise<Buffer> {

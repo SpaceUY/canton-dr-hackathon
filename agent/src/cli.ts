@@ -33,7 +33,8 @@ function usage(): never {
       "--policy-id <id> --request-id <id>\n" +
       "  respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>\n" +
       "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>\n" +
-      "  dashboard        --port <port> --owner-participant <p> --owner <hint> --policy-id <id>",
+      "  dashboard        --port <port> --owner-participant <p> --owner <hint> --policy-id <id> " +
+      "--recover-target <participant> --recover-endpoints <url,url,...>",
   );
   process.exit(1);
 }
@@ -58,8 +59,8 @@ function multiFlag(args: string[], name: string): string[] {
   return values;
 }
 
-function endpointsFlag(args: string[]): string[] {
-  return flag(args, "endpoints")
+function endpointsFlag(args: string[], name = "endpoints"): string[] {
+  return flag(args, name)
     .split(",")
     .map((e) => e.trim())
     .filter((e) => e.length > 0);
@@ -252,6 +253,8 @@ async function main(): Promise<void> {
       ownerParticipant: flag(rest, "owner-participant"),
       ownerPartyHint: flag(rest, "owner"),
       policyId: flag(rest, "policy-id"),
+      recoverTarget: flag(rest, "recover-target"),
+      recoverEndpoints: endpointsFlag(rest, "recover-endpoints"),
     });
     return;
   }

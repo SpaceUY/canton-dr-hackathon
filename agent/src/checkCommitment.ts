@@ -1,4 +1,4 @@
-import { runCantonScript } from "./canton.js";
+import { assertSafeIdentifier, runCantonScript } from "./canton.js";
 
 export interface CheckCommitmentOptions {
   // console name of the counterparty whose records we're asking, e.g. "participant2"
@@ -35,6 +35,8 @@ export interface CheckCommitmentOptions {
 // exchanged matching cryptographic commitments over the shared state.
 export async function checkCommitment(options: CheckCommitmentOptions): Promise<string> {
   const { counterpartyParticipant, aboutParticipant, synchronizerAlias } = options;
+  assertSafeIdentifier(counterpartyParticipant, "counterpartyParticipant");
+  assertSafeIdentifier(aboutParticipant, "aboutParticipant");
   const alias = synchronizerAlias ?? "da";
 
   const script = `

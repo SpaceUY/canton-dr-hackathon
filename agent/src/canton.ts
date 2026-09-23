@@ -9,6 +9,17 @@ const REMOTE_CONFIG =
   process.env.CANTON_REMOTE_CONFIG ??
   "/canton/user-config/bootstrap-remote.conf,/canton/user-config/features.conf";
 
+// backup.ts/restore.ts/checkCommitment.ts interpolate console names (e.g.
+// "participant1") as bare Scala identifiers, not quoted string literals, so
+// a value containing `;` or other Scala syntax would run as arbitrary code
+// with full console admin rights. Every caller that does this must validate
+// through here first — real console names are always plain identifiers.
+export function assertSafeIdentifier(value: string, label: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
+    throw new Error(`${label} must be a plain identifier (got '${value}')`);
+  }
+}
+
 // Repair commands (export_acs/import_acs) only exist in the Scala console,
 // not the Ledger JSON API — so every operation here means writing a small
 // .canton script and running it as a subprocess, then reading back stdout.

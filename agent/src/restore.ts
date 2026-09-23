@@ -1,4 +1,4 @@
-import { runCantonScript } from "./canton.js";
+import { assertSafeIdentifier, runCantonScript } from "./canton.js";
 
 export interface RestoreOptions {
   targetParticipant: string;
@@ -15,6 +15,7 @@ export interface RestoreOptions {
 // the CLI's stdout otherwise).
 export async function restore(options: RestoreOptions): Promise<string> {
   const { targetParticipant, inFile } = options;
+  assertSafeIdentifier(targetParticipant, "targetParticipant");
   const synchronizerAlias = options.synchronizerAlias ?? "da";
 
   const script = `

@@ -61,6 +61,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       res.writeHead(404).end("not found");
       return;
     }
-    res.writeHead(500).end(err instanceof Error ? err.message : "internal error");
+    console.error("agent server request failed:", err);
+    res.writeHead(500).end("internal error");
   }
 }

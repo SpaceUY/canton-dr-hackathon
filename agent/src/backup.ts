@@ -1,4 +1,4 @@
-import { runCantonScript } from "./canton.js";
+import { assertSafeIdentifier, runCantonScript } from "./canton.js";
 
 export interface BackupOptions {
   sourceParticipant: string;
@@ -14,6 +14,7 @@ export interface BackupOptions {
 // CLI's stdout otherwise).
 export async function backup(options: BackupOptions): Promise<string> {
   const { sourceParticipant, partyHint, outFile } = options;
+  assertSafeIdentifier(sourceParticipant, "sourceParticipant");
 
   const script = `
 val source = ${sourceParticipant}
