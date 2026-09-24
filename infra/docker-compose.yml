@@ -110,11 +110,15 @@ services:
   # Record contract visible on all 3 participants. Requires `bootstrap` to
   # have run first (needs the DAR uploaded). Re-run with:
   #   docker compose run --rm seed
+  # `owner` is an external party (see agent/src/seed.ts and
+  # docs/ROADMAP-equivalent notes) — its signing key can't live inside
+  # any participant, so seeding moved from bash+curl to this TypeScript
+  # command, which can actually sign owner's own transactions.
   seed:
-    build: .
-    entrypoint: ["bash", "/canton/user-config/seed.sh"]
+    build: ../agent
+    command: ["seed"]
     volumes:
-      - ./canton:/canton/user-config:ro
+      - owner_identity:/canton/identity
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -207,6 +211,7 @@ services:
       - agent1_custody:/canton/custody/agent1:ro
       - agent2_custody:/canton/custody/agent2:ro
       - agent3_custody:/canton/custody/agent3:ro
+      - owner_identity:/canton/identity
 
   # Plan step 7: owner-facing read API + recovery trigger for ui/. Not an
   # endpoint any other agent pushes to, so — unlike agent1/2/3 — running it
@@ -244,6 +249,7 @@ services:
 volumes:
   participant1_data: # persistent by design, see participant1.conf — the demo kills it via volume rm
   participant4_data:
+  owner_identity: # owner's external signing key — see agent/src/seed.ts
   agent_exports:
   agent1_custody:
   agent2_custody:

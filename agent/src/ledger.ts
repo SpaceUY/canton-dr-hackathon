@@ -34,6 +34,15 @@ export async function resolveParty(participant: string, hint: string): Promise<s
   return allocated.partyDetails.party;
 }
 
+export async function getSynchronizerId(participant: string, alias = "da"): Promise<string> {
+  const info = await request<{ connectedSynchronizers: { synchronizerAlias: string; synchronizerId: string }[] }>(
+    `http://${participant}/v2/state/connected-synchronizers`,
+  );
+  const match = info.connectedSynchronizers.find((s) => s.synchronizerAlias === alias);
+  if (match === undefined) throw new Error(`${participant} is not connected to synchronizer '${alias}'`);
+  return match.synchronizerId;
+}
+
 async function participantNamespace(participant: string): Promise<string> {
   const info = await request<{ participantId: string }>(`http://${participant}/v2/parties/participant-id`);
   const namespace = info.participantId.split("::")[1];

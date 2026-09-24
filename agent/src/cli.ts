@@ -11,6 +11,7 @@ import { requestRecovery } from "./requestRecovery.js";
 import { respond } from "./respond.js";
 import { respondRecovery } from "./respondRecovery.js";
 import { restore } from "./restore.js";
+import { seed } from "./seed.js";
 import { startServer } from "./server.js";
 
 function usage(): never {
@@ -32,6 +33,7 @@ function usage(): never {
       "  request-recovery --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> " +
       "--policy-id <id> --request-id <id>\n" +
       "  respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>\n" +
+      "  seed             (no args — allocates owner as an external party, seeds the demo Record)\n" +
       "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>\n" +
       "  dashboard        --port <port> --owner-participant <p> --owner <hint> --policy-id <id> " +
       "--recover-target <participant> --recover-endpoints <url,url,...>",
@@ -244,6 +246,11 @@ async function main(): Promise<void> {
         aboutParticipant: flag(rest, "about-participant"),
       }),
     );
+    return;
+  }
+
+  if (command === "seed") {
+    console.log(await seed());
     return;
   }
 

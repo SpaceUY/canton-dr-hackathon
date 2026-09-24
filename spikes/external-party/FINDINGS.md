@@ -92,3 +92,27 @@ last real unknown for migrating `owner` — everything `create-policy`/`distribu
 need (submitting a command *as* `owner`) works for an external party the same way it works for a
 local one, just with one extra prepare/sign/execute round trip instead of one HTTP call. Code:
 `spikes/external-party/signatory-allocate.mjs` + `signatory-submit.mjs`.
+
+## 2026-09-24, integration (not spike) into the real pipeline
+
+**`owner` is now genuinely an external party in the real demo setup**, not just in throwaway spike
+infrastructure. `infra/canton/seed.sh` (bash + curl, could only allocate local parties and let
+participant1 sign on their behalf) is replaced by `agent/src/seed.ts` — real crypto needs Node, not
+bash. New shared helpers: `agent/src/externalParty.ts` (`allocateExternalParty`,
+`submitAsExternalParty`), reusable by every later command that needs to act as `owner`. `owner`'s
+key persists to a new `owner_identity` docker volume, mounted into both the `seed` and `agent`
+services.
+
+Verified against the real demo setup (not `spikeN` throwaways), end to end:
+- `owner`'s Record contract has `signatories: ["owner::..."]` — genuinely self-signed, confirmed by
+  direct query.
+- Re-running `seed` is idempotent: same `owner` party ID both times (key reused from the volume,
+  not regenerated), and exactly 1 active contract after two runs (no duplicate).
+
+**Docker Desktop was unusually slow this session** (bootstrap took 10+ min twice, `seed`'s own
+`prepare` call hit one transient 503) — same class of transient issue seen all along, not a new
+bug. No root cause investigated; kill-and-retry keeps working.
+
+**Not yet touched**: `agent1/2/3`, `dashboard`, and `create-policy`/`distribute`/`request-recovery`
+still assume `owner` is a local party and will fail as-is against the now-external `owner` — that's
+the next piece of wiring, not a surprise.
