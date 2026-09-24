@@ -21,6 +21,7 @@ services:
     command: ["daemon", "-c", "/canton/user-config/participant1.conf,/canton/user-config/features.conf", "--no-tty"]
     volumes:
       - ./canton:/canton/user-config:ro
+      - participant1_data:/canton/data # TEMPORARY, see participant1.conf
     ports:
       - "5011:5011"
       - "5012:5012"
@@ -241,6 +242,7 @@ services:
       retries: 30
 
 volumes:
+  participant1_data: # TEMPORARY (feature/identity-recovery branch), see participant1.conf
   participant4_data:
   agent_exports:
   agent1_custody:

@@ -57,10 +57,38 @@ recovered contract and the new one show up as active for `spike5` on the new par
 closes the full success criterion (identity + state + continued operability), not just identity
 survival.
 
-**Open question going into the "external party as *signatory*, not just observer" spike**: every
-test so far had the external party as an *observer* on a contract signed by an ordinary local
-party — never as the actor submitting its own command. The real demo's `owner` party is the actor
-for `create-policy`/`distribute`/`request-recovery`, so this is the next real unknown, not the
-migration itself. See Canton's `community/app/src/pack/examples/08-interactive-submission/` for the
-reference flow (prepare → sign externally → execute) — to be confirmed against the real binary
-before assuming it works.
+**Switching both `participant1` and `participant2` from memory to H2 file storage at the same time
+overloaded this dev machine.** Both migrating their H2 schema for the first time simultaneously
+caused persistent `DB_CONNECTION_LOST` timeouts (`slick-participant1-2 - Connection is not
+available, request timed out after ~7-9s`), and `bootstrap` never completed even after 11+ minutes
+(normally ~20s). Docker itself still reported both containers "healthy" the whole time — the
+container-level healthcheck doesn't catch this. Fix: only switch the participant that actually
+needs to survive repeated kills during dev (`participant1`, since it's the one the demo script
+kills) to H2; leave `participant2` on memory. One node migrating H2 for the first time is fine;
+two at once, on this machine, is not.
+
+**RESOLVED same day: an external party CAN be signatory of its own Daml command, not just an
+observer.** Confirmed against the real binary on the first attempt. Mechanism: the Interactive
+Submission Service, `/v2/interactive-submission/prepare` + `/v2/interactive-submission/executeAndWait`
+on the plain JSON Ledger API (same family the project already uses — no gRPC/protobuf tooling
+needed, contrary to what the only in-repo Python example uses
+(`community/app/src/pack/examples/08-interactive-submission/`). Found a clean TypeScript reference
+instead: `community/app/src/pack/examples/14-multisync/src/interactive-submission.ts` +
+`signing.ts`. Flow:
+1. `POST /v2/interactive-submission/prepare` with the normal `CreateCommand`/`actAs` (the external
+   party as `actAs`, exactly like a real command) plus `synchronizerId` — returns
+   `preparedTransactionHash` (base64) and `preparedTransaction`.
+2. Sign `preparedTransactionHash` with the party's private key —
+   `crypto.sign(null, hashBytes, privateKey)`, same Ed25519 pattern as topology signing, but
+   **`format: "SIGNATURE_FORMAT_RAW"` here, not `"SIGNATURE_FORMAT_CONCAT"`** (topology
+   transactions use `CONCAT`; regular Daml transactions use `RAW` — easy to get wrong by copying
+   the topology-signing code verbatim).
+3. `POST /v2/interactive-submission/executeAndWait` with the prepared transaction plus
+   `partySignatures: { signatures: [{ party, signatures: [...] }] }`.
+
+Verified: the resulting contract's `signatories` field is genuinely the external party (not a
+stand-in local party), confirmed by direct query, not just "no error was thrown." This closes the
+last real unknown for migrating `owner` — everything `create-policy`/`distribute`/`request-recovery`
+need (submitting a command *as* `owner`) works for an external party the same way it works for a
+local one, just with one extra prepare/sign/execute round trip instead of one HTTP call. Code:
+`spikes/external-party/signatory-allocate.mjs` + `signatory-submit.mjs`.
