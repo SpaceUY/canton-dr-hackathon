@@ -118,10 +118,15 @@ fraction of the work, finishable.
 Shows that the custodian only ever saw ciphertext.
 
 The node that dies is always `participant1` — that's what the run guide's recovery flow
-targets. Kill it from a terminal with a script (`docker stop`), not from a dashboard button:
-the dashboard is a hardened, unauthenticated-by-design HTTP endpoint (see the security fixes
-in `agent/src/dashboard.ts`), and giving it the power to kill containers would undo that on
+targets. Kill it from a terminal with a script, not from a dashboard button: the dashboard is
+a hardened, unauthenticated-by-design HTTP endpoint (see the security fixes in
+`agent/src/dashboard.ts`), and giving it the power to kill containers would undo that on
 purpose. This same rule applies to any future "destroy node" demo enhancement.
+
+`participant1` persists to disk (H2), by design, not memory — so the destruction step is
+stop + remove the container, then `docker volume rm infra_participant1_data`, not just
+`docker stop`. This is also more honest: a real disaster loses or corrupts the disk, it
+doesn't just crash the process. See `docs/DEMO_SCRIPT_SKELETON.md` for the exact command.
 
 ## References
 
