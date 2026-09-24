@@ -1,0 +1,18 @@
+import com.digitalasset.canton.topology.ParticipantId
+
+val partyId = PartyId.tryFromProtoPrimitive("spike4::122071913dc66644f65e0a4a1b15a4dc2dec2f9b1c6f9115a02c472201466352f27d")
+val synchronizerId = participant2.synchronizers.id_of("da")
+val target5Id = ParticipantId.tryFromProtoPrimitive("PAR::participant5::1220869d0e07469b3bc1f40349ae25015e083b8c2c3f518c089a80c9f9b52ffc6ba8")
+
+// Using the original pre-activation offset (184), captured well before any
+// of today's topology activity - "search from X forward" just needs X to be
+// at or before the real activation event, not immediately before it.
+participant2.parties.export_party_acs(
+  party = partyId,
+  synchronizerId = synchronizerId,
+  targetParticipantId = target5Id,
+  beginOffsetExclusive = 184L,
+  exportFilePath = "/spike/spike4-p5.acs.gz",
+)
+
+println("P5_EXPORT_OK")

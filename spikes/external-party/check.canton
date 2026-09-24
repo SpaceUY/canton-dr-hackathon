@@ -1,0 +1,8 @@
+val results = participant3.parties.list(filterParty = "spike3")
+results.foreach { r =>
+  println(s"PARTY: ${r.party} participants=${r.participants.map(_.participant).mkString(",")}")
+}
+val results2 = participant2.parties.list(filterParty = "spike3")
+results2.foreach { r =>
+  println(s"PARTY_VIA_P2: ${r.party} participants=${r.participants.map(_.participant).mkString(",")}")
+}

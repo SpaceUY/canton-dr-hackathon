@@ -1,0 +1,2 @@
+val beforeActivationOffset = participant2.ledger_api.state.end()
+println(s"BEFORE_OFFSET:${beforeActivationOffset}")

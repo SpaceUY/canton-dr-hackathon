@@ -1,0 +1,27 @@
+import com.digitalasset.canton.topology.transaction.ParticipantPermission
+import java.nio.file.{Files, Paths}
+
+// Reconnect first (we disconnected participant3 in step1 already)
+participant3.synchronizers.modify("da", _.copy(manualConnect = false))
+participant3.synchronizers.reconnect_all()
+
+val partyId = PartyId.tryFromProtoPrimitive("spike4::122071913dc66644f65e0a4a1b15a4dc2dec2f9b1c6f9115a02c472201466352f27d")
+val synchronizerId = participant3.synchronizers.id_of("da")
+val proposal = participant3.topology.party_to_participant_mappings.propose_delta(
+  party = partyId,
+  adds = Seq((participant3.id, ParticipantPermission.Observation)),
+  store = synchronizerId,
+  requiresPartyToBeOnboarded = true,
+)
+val hashBytes = proposal.hash.hash.getCryptographicEvidence.toByteArray
+println(s"PROPOSAL_HASH_B64_AGAIN:${java.util.Base64.getEncoder.encodeToString(hashBytes)}")
+
+val serialized = proposal.toByteString.toByteArray
+Files.write(Paths.get("/spike/proposal.bin"), serialized)
+println(s"SERIALIZED_BYTES:${serialized.length}")
+
+// Re-isolate for real this time
+participant3.synchronizers.disconnect_all()
+participant3.synchronizers.modify("da", _.copy(manualConnect = true))
+
+println("STEP1B_OK")

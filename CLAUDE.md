@@ -41,9 +41,26 @@ recoverable and correct.
   is replicated whole across custodians. Same security effect, much more efficient.
 - **ACS commitments verify, they don't restore.** They're hashes. What returns the data
   are the custodians' blobs. This needs to be stated explicitly in the pitch.
-- **Identity recovery and state recovery are two separate layers.** This
+- **~~Identity recovery and state recovery are two separate layers. This
   project covers state (ACS). The node's identity keys are a separate problem and are
-  declared out of scope.
+  declared out of scope.~~ SUPERSEDED 2026-09-23.** That decision was made when the goal
+  was to get a working vertical slice at all — it's done now, so the goal changed. Identity
+  recovery is now in scope and is the top priority. **Confirmed against the real Canton
+  3.5 binary on 2026-09-23**: killed a participant for real (`docker stop`, not simulated)
+  and re-hosted its external party on a different, live participant using only a signature
+  from the party's own externally-held key — the dead participant was never involved. This
+  is a decision, not an open question — don't re-litigate it back to out-of-scope either.
+  See `~/Downloads/ROADMAP.md`'s Priority 1 for the remaining integration work
+  (`spikes/external-party/` has the verified spike scripts).
+- **The identity key is protected by the same Shamir k-of-n scheme as the encryption
+  key, as independent fragments.** One custodian network, two things it protects. Recovering
+  the identity key must never depend on anything only readable with the identity already
+  recovered — that circular dependency defeats the whole point.
+- **Communication rule for the identity-recovery work**: until it runs end-to-end against
+  real ACS state (not just a party with nothing to move), describe it as "mechanism
+  confirmed against the real binary, integration in progress" — never as "the node
+  resurrects." The spike had no state to move; don't let that distinction blur in status
+  updates or the pitch.
 
 ## Known limitations (state them, don't hide them)
 
@@ -99,6 +116,12 @@ fraction of the work, finishable.
 
 3 nodes. One loses its base. Recovers with 2 of 3 fragments. Validates against the commitment.
 Shows that the custodian only ever saw ciphertext.
+
+The node that dies is always `participant1` — that's what the run guide's recovery flow
+targets. Kill it from a terminal with a script (`docker stop`), not from a dashboard button:
+the dashboard is a hardened, unauthenticated-by-design HTTP endpoint (see the security fixes
+in `agent/src/dashboard.ts`), and giving it the power to kill containers would undo that on
+purpose. This same rule applies to any future "destroy node" demo enhancement.
 
 ## References
 

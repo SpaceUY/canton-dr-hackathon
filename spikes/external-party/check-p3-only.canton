@@ -1,0 +1,13 @@
+val results = participant3.parties.list(filterParty = "spike3")
+results.foreach { r =>
+  println(s"PARTY: ${r.party} participants=${r.participants.map(_.participant).mkString(",")}")
+}
+val synchronizerId = participant3.synchronizers.id_of("da")
+val proposals = participant3.topology.party_to_participant_mappings.list(
+  synchronizerId,
+  proposals = true,
+  filterParty = "spike3",
+)
+proposals.foreach { p =>
+  println(s"MAPPING: serial=${p.context.serial} participants=${p.item.participants} isProposal=${p.context.operation}")
+}

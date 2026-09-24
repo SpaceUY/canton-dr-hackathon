@@ -1,0 +1,13 @@
+val partyId = PartyId.tryFromProtoPrimitive("spike4::122071913dc66644f65e0a4a1b15a4dc2dec2f9b1c6f9115a02c472201466352f27d")
+val synchronizerId = participant3.synchronizers.id_of("da")
+
+// Step 10: Import ACS (providing the party ID enables automatic onboarding flag clearance)
+participant3.parties.import_party_acs(synchronizerId, party = Some(partyId), importFilePath = "/spike/spike4.acs.gz")
+println("IMPORT_OK")
+
+// Step 11: Reconnect target, record ledger end
+val targetLedgerEnd = participant3.ledger_api.state.end()
+println(s"TARGET_LEDGER_END:${targetLedgerEnd}")
+participant3.synchronizers.modify("da", _.copy(manualConnect = false))
+participant3.synchronizers.reconnect_local("da")
+println("RECONNECT_OK")

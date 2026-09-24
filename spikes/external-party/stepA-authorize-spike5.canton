@@ -1,0 +1,23 @@
+import com.digitalasset.canton.topology.transaction.ParticipantPermission
+import java.nio.file.{Files, Paths}
+
+val partyId = PartyId.tryFromProtoPrimitive("spike5::122038c67f8e6e084656fa56114bbff5654db68901ba92153cc29ff1d4858788c235")
+val synchronizerId = participant5.synchronizers.id_of("da")
+val proposal = participant5.topology.party_to_participant_mappings.propose_delta(
+  party = partyId,
+  adds = Seq((participant5.id, ParticipantPermission.Observation)),
+  store = synchronizerId,
+  requiresPartyToBeOnboarded = true,
+)
+val hashBytes = proposal.hash.hash.getCryptographicEvidence.toByteArray
+println(s"SPIKE5_PROPOSAL_HASH_B64:${java.util.Base64.getEncoder.encodeToString(hashBytes)}")
+println(s"SPIKE5_P5_ID:${participant5.id.toProtoPrimitive}")
+
+val serialized = proposal.toByteString.toByteArray
+Files.write(Paths.get("/spike/proposal-spike5.bin"), serialized)
+println(s"SPIKE5_SERIALIZED_BYTES:${serialized.length}")
+
+participant5.synchronizers.disconnect_all()
+participant5.synchronizers.modify("da", _.copy(manualConnect = true))
+
+println("SPIKE5_STEPA_OK")

@@ -1,0 +1,12 @@
+import com.digitalasset.canton.topology.transaction.ParticipantPermission
+
+val partyId = PartyId.tryFromProtoPrimitive("spike2::1220c2e540cb72813409cf5c558cf7a1b45d15c6d29136e59bb6d2c91dd5a19ccd95")
+val synchronizerId = participant3.synchronizers.id_of("da")
+val proposal = participant3.topology.party_to_participant_mappings.propose_delta(
+  party = partyId,
+  adds = Seq((participant3.id, ParticipantPermission.Observation)),
+  store = synchronizerId,
+  requiresPartyToBeOnboarded = true,
+)
+val hashBytes = proposal.hash.hash.getCryptographicEvidence.toByteArray
+println(s"PROPOSAL_HASH_B64:${java.util.Base64.getEncoder.encodeToString(hashBytes)}")

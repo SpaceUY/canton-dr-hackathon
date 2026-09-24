@@ -1,0 +1,10 @@
+val synchronizerId = participant5.synchronizers.id_of("da")
+
+participant5.synchronizers.disconnect("da")
+participant5.repair.import_acs(
+  synchronizerId = synchronizerId,
+  importFilePath = "/spike/spike4-repair.acs",
+)
+participant5.synchronizers.reconnect_all()
+
+println("REPAIR_IMPORT_OK")
