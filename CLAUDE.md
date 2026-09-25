@@ -3,11 +3,14 @@
 Verifiable decentralized disaster recovery for Canton nodes.
 Project for the Canton Network hackathon (AppsFactory).
 
-**Live context lives in the sibling vault repo**, `../canton-dr-hackathon-vault`: `ROADMAP.md`
-(what to build now, updated daily), `DECISIONS.md` (canonical decisions/limitations — this file
-keeps a condensed copy below so it stays self-sufficient, but the vault is the source of truth),
-and `FINDINGS.md` (technical findings log, continued from this repo's now-frozen
-`spikes/external-party/FINDINGS.md`). Check the vault before assuming this file alone is current.
+**Live context lives in the sibling vault repo**, `../canton-dr-hackathon-vault` — a real Obsidian
+vault as of 2026-09-25, not flat files. Start at its `Hub.md`. `Roadmap.md` (what to build now,
+updated daily) sits at the vault root; design decisions live as ADRs (`Architecture/Decisions/`)
+and BDRs (`Decisions/`) — this file keeps a condensed copy below so it stays self-sufficient, but
+the vault is the source of truth; proven technical mechanisms live as POCs (`POCs/`, continued from
+this repo's now-frozen `spikes/external-party/FINDINGS.md`). The vault's old flat `DECISIONS.md`/
+`FINDINGS.md` are now redirect stubs — don't read them expecting current content. Check the vault
+before assuming this file alone is current.
 
 ## The problem
 
