@@ -3,6 +3,12 @@
 Verifiable decentralized disaster recovery for Canton nodes.
 Project for the Canton Network hackathon (AppsFactory).
 
+**Live context lives in the sibling vault repo**, `../canton-dr-hackathon-vault`: `ROADMAP.md`
+(what to build now, updated daily), `DECISIONS.md` (canonical decisions/limitations — this file
+keeps a condensed copy below so it stays self-sufficient, but the vault is the source of truth),
+and `FINDINGS.md` (technical findings log, continued from this repo's now-frozen
+`spikes/external-party/FINDINGS.md`). Check the vault before assuming this file alone is current.
+
 ## The problem
 
 Canton prioritizes strict privacy: each participant keeps its data's state

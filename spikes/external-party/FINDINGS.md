@@ -1,5 +1,8 @@
 # External party / identity recovery — findings log
 
+**FROZEN 2026-09-25.** This log continues at `../canton-dr-hackathon-vault/FINDINGS.md` — new
+entries go there, not here. Kept as-is below for history.
+
 Written as things are found, not reconstructed at the end. Canton 3.5.x throughout (matches this
 project's version). Source references are to the public `digital-asset/canton` GitHub repo unless
 noted.
