@@ -16,6 +16,13 @@ export interface DashboardOptions {
   // target participant name itself isn't a safe identifier).
   recoverTarget: string;
   recoverEndpoints: string[];
+  // Same node as recoverTarget, as its http-ledger-api host:port — used only
+  // for the idempotency check in rehostParty.ts.
+  recoverTargetLedgerApi: string;
+  // Console name of a live, still-connected participant used to load the
+  // signed re-hosting proposal during recovery (see rehostParty.ts) — fixed
+  // at startup for the same reason recoverTarget/recoverEndpoints are.
+  recoverLoaderParticipant: string;
 }
 
 type CustodianStatus =
@@ -47,10 +54,29 @@ interface StatusView {
 // server that runs on agent1/2/3) — this is a different concern, run once
 // from wherever the owner's agent is.
 export function startDashboard(options: DashboardOptions): void {
-  const { port, ownerParticipant, ownerPartyHint, policyId, recoverTarget, recoverEndpoints } = options;
+  const {
+    port,
+    ownerParticipant,
+    ownerPartyHint,
+    policyId,
+    recoverTarget,
+    recoverEndpoints,
+    recoverTargetLedgerApi,
+    recoverLoaderParticipant,
+  } = options;
 
   const server = createServer((req, res) => {
-    void handle(req, res, ownerParticipant, ownerPartyHint, policyId, recoverTarget, recoverEndpoints);
+    void handle(
+      req,
+      res,
+      ownerParticipant,
+      ownerPartyHint,
+      policyId,
+      recoverTarget,
+      recoverEndpoints,
+      recoverTargetLedgerApi,
+      recoverLoaderParticipant,
+    );
   });
 
   server.listen(port, () => {
@@ -66,6 +92,8 @@ async function handle(
   policyId: string,
   recoverTarget: string,
   recoverEndpoints: string[],
+  recoverTargetLedgerApi: string,
+  recoverLoaderParticipant: string,
 ): Promise<void> {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
@@ -98,6 +126,8 @@ async function handle(
 
       const result = await recover({
         targetParticipant: body.targetParticipant as string,
+        targetLedgerApi: recoverTargetLedgerApi,
+        loaderParticipant: recoverLoaderParticipant,
         policyId,
         endpoints: body.endpoints as string[],
         threshold: body.k as number,

@@ -233,11 +233,16 @@ services:
         "demo",
         "--recover-target",
         "participant4",
+        "--recover-target-ledger-api",
+        "participant4:5043",
         "--recover-endpoints",
         "http://agent1:4001,http://agent2:4002,http://agent3:4003",
+        "--recover-loader-participant",
+        "participant2",
       ]
     volumes:
       - ./canton:/canton/user-config:ro
+      - owner_identity:/canton/identity:ro
     ports:
       - "4010:4010"
     healthcheck:

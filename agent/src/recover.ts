@@ -3,23 +3,42 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { combine } from "shamir-secret-sharing";
 import { decryptFile } from "./crypto.js";
+import { loadExternalPartyIdentity } from "./externalParty.js";
+import { rehostParty } from "./rehostParty.js";
 import { restore } from "./restore.js";
+
+// Same identity seed.ts allocated `owner` under. Loaded from disk, not
+// looked up live — the whole point of recovery is that the original hosting
+// participant may be dead, so a live allocateExternalParty fallback would be
+// wrong even as a fallback.
+const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der";
 
 export interface RecoverOptions {
   targetParticipant: string;
+  targetLedgerApi: string;
+  loaderParticipant: string;
   policyId: string;
   endpoints: string[];
   threshold: number;
 }
 
 export async function recover(options: RecoverOptions): Promise<string> {
-  const { targetParticipant, policyId, endpoints, threshold } = options;
+  const { targetParticipant, targetLedgerApi, loaderParticipant, policyId, endpoints, threshold } = options;
   if (endpoints.length < threshold) {
     throw new Error(`need at least ${threshold} endpoints, got ${endpoints.length}`);
   }
 
   const workDir = await mkdtemp(join(tmpdir(), "agent-recover-"));
   try {
+    const owner = await loadExternalPartyIdentity(OWNER_KEY_PATH);
+    const rehostLine = await rehostParty({
+      partyId: owner.partyId,
+      targetParticipant,
+      targetLedgerApi,
+      loaderParticipant,
+      keyPath: owner.keyPath,
+    });
+
     const blob = await fetchFirstAvailable(endpoints.map((e) => `${e}/custody/${policyId}/blob`));
     const encryptedPath = join(workDir, "acs.enc");
     await writeFile(encryptedPath, blob);
@@ -39,7 +58,7 @@ export async function recover(options: RecoverOptions): Promise<string> {
     await decryptFile(encryptedPath, acsPath, key);
 
     const restoreLine = await restore({ targetParticipant, inFile: acsPath });
-    return `RECOVER_OK: reconstructed key from ${shares.length}/${endpoints.length} shares; ${restoreLine}`;
+    return `RECOVER_OK: reconstructed key from ${shares.length}/${endpoints.length} shares; ${rehostLine}; ${restoreLine}`;
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }

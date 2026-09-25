@@ -21,7 +21,8 @@ function usage(): never {
       "  restore        --target <participant> --in <path>\n" +
       "  serve          --port <port>\n" +
       "  distribute     --source <participant> --party <hint> --policy-id <id> --endpoints <url,url,...> --k <n>\n" +
-      "  recover        --target <participant> --policy-id <id> --endpoints <url,url,...> --k <n>\n" +
+      "  recover        --target <participant> --target-ledger-api <host:port> --loader-participant <console> " +
+      "--policy-id <id> --endpoints <url,url,...> --k <n>\n" +
       "  create-policy  --owner-participant <p> --owner <hint> --custodian <participant:port:hint> [--custodian ...] " +
       "--k <n> --n <n> --frequency-hours <h> --policy-id <id>\n" +
       "  accept-custody --as <name> --participant <p> --custodian <hint> --owner-participant <p> --owner <hint> --policy-id <id>\n" +
@@ -36,7 +37,8 @@ function usage(): never {
       "  seed             (no args — allocates owner as an external party, seeds the demo Record)\n" +
       "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>\n" +
       "  dashboard        --port <port> --owner-participant <p> --owner <hint> --policy-id <id> " +
-      "--recover-target <participant> --recover-endpoints <url,url,...>",
+      "--recover-target <participant> --recover-target-ledger-api <host:port> --recover-endpoints <url,url,...> " +
+      "--recover-loader-participant <console>",
   );
   process.exit(1);
 }
@@ -137,6 +139,8 @@ async function main(): Promise<void> {
     console.log(
       await recover({
         targetParticipant: flag(rest, "target"),
+        targetLedgerApi: flag(rest, "target-ledger-api"),
+        loaderParticipant: flag(rest, "loader-participant"),
         policyId: flag(rest, "policy-id"),
         endpoints: endpointsFlag(rest),
         threshold: thresholdFlag(rest),
@@ -262,6 +266,8 @@ async function main(): Promise<void> {
       policyId: flag(rest, "policy-id"),
       recoverTarget: flag(rest, "recover-target"),
       recoverEndpoints: endpointsFlag(rest, "recover-endpoints"),
+      recoverTargetLedgerApi: flag(rest, "recover-target-ledger-api"),
+      recoverLoaderParticipant: flag(rest, "recover-loader-participant"),
     });
     return;
   }

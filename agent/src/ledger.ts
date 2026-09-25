@@ -34,6 +34,18 @@ export async function resolveParty(participant: string, hint: string): Promise<s
   return allocated.partyDetails.party;
 }
 
+// Whether `participant` already hosts `partyId` locally (isLocal: true), as
+// opposed to merely knowing about it via topology broadcast. Read-only — use
+// this instead of resolveParty for an idempotency check, since resolveParty
+// allocates a fresh local party on a miss, which would be catastrophic here
+// (re-hosting must never accidentally create a brand new, unrelated party).
+export async function isPartyHostedLocally(participant: string, partyId: string): Promise<boolean> {
+  const found = await request<{ partyDetails: { party: string; isLocal: boolean }[] }>(
+    `http://${participant}/v2/parties/party?parties=${partyId}`,
+  );
+  return found.partyDetails.some((d) => d.party === partyId && d.isLocal);
+}
+
 export async function getSynchronizerId(participant: string, alias = "da"): Promise<string> {
   const info = await request<{ connectedSynchronizers: { synchronizerAlias: string; synchronizerId: string }[] }>(
     `http://${participant}/v2/state/connected-synchronizers`,

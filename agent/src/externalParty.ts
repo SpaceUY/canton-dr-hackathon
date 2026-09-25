@@ -18,6 +18,20 @@ export interface ExternalPartyIdentity {
   keyPath: string;
 }
 
+// Loads an already-allocated external party's identity purely from local
+// files — no network call, no allocate-fresh fallback. Use this (not
+// allocateExternalParty) wherever the original hosting participant might be
+// dead, e.g. identity recovery: falling through to allocateExternalParty's
+// live-allocation path there would be wrong even as a fallback, since it'd
+// require a participant that may no longer exist.
+export async function loadExternalPartyIdentity(keyPath: string): Promise<ExternalPartyIdentity> {
+  const partyIdPath = keyPath.replace(/\.der$/, ".party-id.txt");
+  const existingKeyDer = await readFile(keyPath);
+  const existingPartyId = (await readFile(partyIdPath, "utf8")).trim();
+  createPrivateKey({ key: existingKeyDer, format: "der", type: "pkcs8" }); // sanity-check it parses
+  return { partyId: existingPartyId, keyPath };
+}
+
 // Idempotent: if a key already exists at keyPath, reuses it (and the party
 // it already allocated) instead of generating a new one — re-running seed
 // must not orphan the previous identity.
@@ -27,13 +41,8 @@ export async function allocateExternalParty(
   synchronizerId: string,
   keyPath: string,
 ): Promise<ExternalPartyIdentity> {
-  const partyIdPath = keyPath.replace(/\.der$/, ".party-id.txt");
-
   try {
-    const existingKeyDer = await readFile(keyPath);
-    const existingPartyId = (await readFile(partyIdPath, "utf8")).trim();
-    createPrivateKey({ key: existingKeyDer, format: "der", type: "pkcs8" }); // sanity-check it parses
-    return { partyId: existingPartyId, keyPath };
+    return await loadExternalPartyIdentity(keyPath);
   } catch {
     // No existing key — allocate fresh.
   }
@@ -80,9 +89,37 @@ export async function allocateExternalParty(
 
   await mkdir(dirname(keyPath), { recursive: true });
   await writeFile(keyPath, privateKey.export({ format: "der", type: "pkcs8" }));
-  await writeFile(partyIdPath, gen.partyId);
+  await writeFile(keyPath.replace(/\.der$/, ".party-id.txt"), gen.partyId);
 
   return { partyId: gen.partyId, keyPath };
+}
+
+export interface TopologySignature {
+  signatureB64: string;
+  fingerprint: string;
+}
+
+// Signs a topology-transaction hash — e.g. a party_to_participant_mappings
+// re-hosting proposal, used to authorize a new participant to host an
+// already-existing external party during identity recovery. Confirmed
+// against the real binary in spikes/external-party/ before landing here.
+//
+// Topology transactions use SIGNATURE_FORMAT_CONCAT — NOT the
+// SIGNATURE_FORMAT_RAW submitAsExternalParty uses below for regular Daml
+// transactions. Mixing these two up is the single easiest way to get this
+// wrong (see FINDINGS/POCs) — hence a distinct, differently-named function
+// rather than a shared one with a format flag.
+export async function signTopologyHash(
+  hashB64: string,
+  keyPath: string,
+  partyId: string,
+): Promise<TopologySignature> {
+  const keyDer = await readFile(keyPath);
+  const privateKey = createPrivateKey({ key: keyDer, format: "der", type: "pkcs8" });
+  const fingerprint = partyId.split("::")[1];
+  if (fingerprint === undefined) throw new Error(`unexpected partyId shape: ${partyId}`);
+  const signature = cryptoSign(null, Buffer.from(hashB64, "base64"), privateKey);
+  return { signatureB64: signature.toString("base64"), fingerprint };
 }
 
 // Submits a command with an external party as (one of) the actor(s), via
