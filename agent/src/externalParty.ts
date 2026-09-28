@@ -31,7 +31,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 // itself reports for a freshly generated key before trusting this — a first
 // attempt that hashed the full DER SPKI bytes instead of just the raw key
 // silently computed a plausible-looking but wrong fingerprint.
-function computeKeyFingerprint(publicKey: KeyObject): string {
+export function computeKeyFingerprint(publicKey: KeyObject): string {
   const derSpki = publicKey.export({ format: "der", type: "spki" });
   const rawKey = derSpki.subarray(derSpki.length - 32);
   const purposeBytes = Buffer.alloc(4);
@@ -48,7 +48,7 @@ function computeKeyFingerprint(publicKey: KeyObject): string {
 // "Invalid signature" server-side, hours of debugging to trace back. This
 // check catches that class of mistake at the source, deterministically and
 // instantly, instead of relying on a topology-rejection message to notice.
-function assertKeyMatchesParty(privateKey: KeyObject, partyId: string, context: string): void {
+export function assertKeyMatchesParty(privateKey: KeyObject, partyId: string, context: string): void {
   const expectedFingerprint = partyId.split("::")[1];
   if (expectedFingerprint === undefined) {
     throw new Error(`${context}: unexpected partyId shape '${partyId}' (expected 'hint::fingerprint')`);

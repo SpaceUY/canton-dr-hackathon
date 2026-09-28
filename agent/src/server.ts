@@ -4,10 +4,16 @@ import { dirname, join } from "node:path";
 
 const DATA_DIR = process.env.CUSTODY_DATA_DIR ?? "/canton/custody";
 
-type Kind = "blob" | "share";
+type Kind = "blob" | "share" | "identity-share";
+
+const FILE_NAME: Record<Kind, string> = {
+  blob: "blob.enc",
+  share: "share.bin",
+  "identity-share": "identity-share.bin",
+};
 
 function fileFor(policyId: string, kind: Kind): string {
-  return join(DATA_DIR, policyId, kind === "blob" ? "blob.enc" : "share.bin");
+  return join(DATA_DIR, policyId, FILE_NAME[kind]);
 }
 
 async function readBody(req: IncomingMessage): Promise<Buffer> {
@@ -33,7 +39,7 @@ export function startServer(port: number): void {
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const match = req.url?.match(/^\/custody\/([^/]+)\/(blob|share)$/);
+  const match = req.url?.match(/^\/custody\/([^/]+)\/(blob|share|identity-share)$/);
   if (!match) {
     res.writeHead(404).end("not found");
     return;

@@ -6,7 +6,9 @@ import { challengeLoop } from "./challengeLoop.js";
 import { createPolicy, type CustodianRef } from "./createPolicy.js";
 import { startDashboard } from "./dashboard.js";
 import { distribute } from "./distribute.js";
+import { distributeIdentityKey } from "./distributeIdentity.js";
 import { recover } from "./recover.js";
+import { recoverIdentityKey } from "./recoverIdentity.js";
 import { requestRecovery } from "./requestRecovery.js";
 import { respond } from "./respond.js";
 import { respondRecovery } from "./respondRecovery.js";
@@ -21,8 +23,11 @@ function usage(): never {
       "  restore        --target <participant> --in <path>\n" +
       "  serve          --port <port>\n" +
       "  distribute     --source <participant> --party <hint> --policy-id <id> --endpoints <url,url,...> --k <n>\n" +
+      "  distribute-identity --policy-id <id> --endpoints <url,url,...> --k <n> [--key-path <path>]\n" +
       "  recover        --target <participant> --target-ledger-api <host:port> --loader-participant <console> " +
       "--policy-id <id> --endpoints <url,url,...> --k <n>\n" +
+      "  recover-identity --policy-id <id> --endpoints <url,url,...> --k <n> --custodian-participant <p> " +
+      "--custodian <hint> [--key-path <path>]\n" +
       "  create-policy  --owner-participant <p> --owner <hint> --custodian <participant:port:hint> [--custodian ...] " +
       "--k <n> --n <n> --frequency-hours <h> --policy-id <id>\n" +
       "  accept-custody --as <name> --participant <p> --custodian <hint> --owner-participant <p> --owner <hint> --policy-id <id>\n" +
@@ -69,6 +74,13 @@ function endpointsFlag(args: string[], name = "endpoints"): string[] {
     .map((e) => e.trim())
     .filter((e) => e.length > 0);
 }
+
+function optionalFlag(args: string[], name: string, defaultValue: string): string {
+  const idx = args.indexOf(`--${name}`);
+  return idx === -1 ? defaultValue : (args[idx + 1] ?? defaultValue);
+}
+
+const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der";
 
 function thresholdFlag(args: string[]): number {
   const n = Number.parseInt(flag(args, "k"), 10);
@@ -144,6 +156,32 @@ async function main(): Promise<void> {
         policyId: flag(rest, "policy-id"),
         endpoints: endpointsFlag(rest),
         threshold: thresholdFlag(rest),
+      }),
+    );
+    return;
+  }
+
+  if (command === "distribute-identity") {
+    console.log(
+      await distributeIdentityKey({
+        keyPath: optionalFlag(rest, "key-path", OWNER_KEY_PATH),
+        policyId: flag(rest, "policy-id"),
+        endpoints: endpointsFlag(rest),
+        threshold: thresholdFlag(rest),
+      }),
+    );
+    return;
+  }
+
+  if (command === "recover-identity") {
+    console.log(
+      await recoverIdentityKey({
+        keyPath: optionalFlag(rest, "key-path", OWNER_KEY_PATH),
+        policyId: flag(rest, "policy-id"),
+        endpoints: endpointsFlag(rest),
+        threshold: thresholdFlag(rest),
+        custodianParticipant: flag(rest, "custodian-participant"),
+        custodianPartyHint: flag(rest, "custodian"),
       }),
     );
     return;
