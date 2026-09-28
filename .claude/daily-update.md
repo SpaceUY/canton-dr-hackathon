@@ -29,6 +29,23 @@ Developer: tomascmk
 - Redesigned the layout per feedback: policy/custodian details collapse into an accordion the moment
   Recover is clicked, and the button became the visual centerpiece of its own section instead of a
   small inline control.
+- Found and fixed a real permission bug in party re-hosting: the recovered owner could receive
+  commands from counterparties but never submit its own (Interactive Submission timed out silently).
+  Root cause: rehostParty.ts requested Observation instead of Confirmation. Verified against Canton's
+  own source (canConfirm is false for Observation) and against the live environment — owner can now
+  submit real commands from the recovered participant4.
+- Started the "what's at stake" real-positions feature (Position.daml + seed.ts) but hit a real
+  environment blocker: this dev environment's owner party ended up hosted on two participants with
+  inconsistent vetted package sets, which Interactive Submission rejects outright. The safe fix
+  (removing the dead host from the party's topology) was correctly blocked by the auto-mode permission
+  classifier as a shared-resource change — needs an explicit yes/no, documented in the vault's demo
+  flow doc under "Pendiente".
+- Shipped three of the five UI closing-list items, all real backend data: a ciphertext panel (fetches
+  actual encrypted bytes live from a real custodian's own volume, replacing the terminal `xxd` step),
+  a live recovery timer (real wall-clock RTO, frozen at the end), and an always-visible pre-disaster
+  strip (each custodian's last-challenge-OK time, so the demo shows the product working before showing
+  it destroyed). Typechecked clean on both agent and ui; could not click through in an actual browser
+  this session (no browser-automation tool available) — worth a human pass before the real demo.
 
 ---
 Date: 2026-09-28
