@@ -41,7 +41,7 @@ function usage(): never {
       "  respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>\n" +
       "  seed             (no args — allocates owner as an external party, seeds the demo Record)\n" +
       "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>\n" +
-      "  dashboard        --port <port> --owner-participant <p> --owner <hint> --policy-id <id> " +
+      "  dashboard        --port <port> --custodian <participant:port:hint> [--custodian ...] --policy-id <id> " +
       "--recover-target <participant> --recover-target-ledger-api <host:port> --recover-endpoints <url,url,...> " +
       "--recover-loader-participant <console>",
   );
@@ -299,8 +299,7 @@ async function main(): Promise<void> {
   if (command === "dashboard") {
     startDashboard({
       port: intFlag(rest, "port"),
-      ownerParticipant: flag(rest, "owner-participant"),
-      ownerPartyHint: flag(rest, "owner"),
+      statusCustodians: custodianRefsFlag(rest),
       policyId: flag(rest, "policy-id"),
       recoverTarget: flag(rest, "recover-target"),
       recoverEndpoints: endpointsFlag(rest, "recover-endpoints"),

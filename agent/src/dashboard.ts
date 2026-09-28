@@ -1,18 +1,30 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { queryActive, type ActiveContract } from "./ledger.js";
+import type { CustodianRef } from "./createPolicy.js";
+import { queryActive, resolveParty, type ActiveContract } from "./ledger.js";
 import { loadExternalPartyIdentity } from "./externalParty.js";
 import { recover } from "./recover.js";
 
-// Same identity seed.ts allocated `owner` under — see createPolicy.ts for
-// why this replaces resolveParty for the owner side of things. ownerPartyHint
-// stays in DashboardOptions/the CLI flag for backwards-compatible startup
-// invocation, but is no longer used to resolve the party itself.
+// Same identity seed.ts allocated `owner` under — used to know WHO owner is
+// (a local file read, no network, never affected by owner's own participant
+// being down). WHERE to query for owner's contracts is a separate question —
+// see statusCustodians below.
 const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der";
 
 export interface DashboardOptions {
   port: number;
-  ownerParticipant: string;
-  ownerPartyHint: string;
+  // /status queries via the custodians' own participants, not owner's — a
+  // custodian is an observer on BackupPolicy regardless of whether owner's
+  // own hosting participant is alive. Querying via owner's participant broke
+  // /status permanently the moment participant1 died in testing: recovering
+  // owner onto a new participant never made the dashboard look anywhere
+  // else, so the error just stayed on screen for the rest of the demo.
+  // Every custodian is queried (not just one) because Challenge/
+  // CustodianAgreement/etc name only ONE specific custodian as observer
+  // (see daml/BackupPolicy.daml) — a single custodian's view is missing the
+  // others' rows entirely, not just stale. Fixed 2026-09-29, same
+  // "don't trust owner's own participant to be alive" pattern as
+  // recoverIdentityKey (agent/src/recoverIdentity.ts).
+  statusCustodians: CustodianRef[];
   policyId: string;
   // The only recovery target/endpoints this dashboard will act on — set at
   // startup (see cli.ts's `dashboard` command), not trusted from the
@@ -63,8 +75,7 @@ interface StatusView {
 export function startDashboard(options: DashboardOptions): void {
   const {
     port,
-    ownerParticipant,
-    ownerPartyHint,
+    statusCustodians,
     policyId,
     recoverTarget,
     recoverEndpoints,
@@ -76,8 +87,7 @@ export function startDashboard(options: DashboardOptions): void {
     void handle(
       req,
       res,
-      ownerParticipant,
-      ownerPartyHint,
+      statusCustodians,
       policyId,
       recoverTarget,
       recoverEndpoints,
@@ -94,8 +104,7 @@ export function startDashboard(options: DashboardOptions): void {
 async function handle(
   req: IncomingMessage,
   res: ServerResponse,
-  ownerParticipant: string,
-  ownerPartyHint: string,
+  statusCustodians: CustodianRef[],
   policyId: string,
   recoverTarget: string,
   recoverEndpoints: string[],
@@ -113,7 +122,7 @@ async function handle(
 
   try {
     if (req.method === "GET" && req.url === "/status") {
-      const status = await getStatus(ownerParticipant, policyId);
+      const status = await getStatus(statusCustodians, policyId);
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(status));
       return;
     }
@@ -183,29 +192,56 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function getStatus(ownerParticipant: string, policyId: string): Promise<StatusView> {
+async function getStatus(statusCustodians: CustodianRef[], policyId: string): Promise<StatusView> {
   const owner = (await loadExternalPartyIdentity(OWNER_KEY_PATH)).partyId;
+  if (statusCustodians.length === 0) throw new Error("no custodians configured for status queries");
 
-  const policies = await queryActive(ownerParticipant, owner, ":BackupPolicy:BackupPolicy");
-  const policy = policies.find((p) => p.payload["policyId"] === policyId);
+  const resolved = await Promise.all(
+    statusCustodians.map(async (c) => ({
+      participant: c.participant,
+      party: await resolveParty(c.participant, c.partyHint),
+    })),
+  );
+
+  // BackupPolicy is visible to every custodian (observer custodians, the
+  // full list) — asking the first one is enough to learn the policy itself.
+  // Matched by owner id too, not just policyId: this project's demo
+  // environment genuinely accumulates more than one BackupPolicy sharing the
+  // same policyId across re-seeds/re-tests (see ADR-007 in the vault) —
+  // picking the first query match reproduced that exact bug here during
+  // testing.
+  const first = resolved[0];
+  if (first === undefined) throw new Error("no custodians configured for status queries");
+  const policies = await queryActive(first.participant, first.party, ":BackupPolicy:BackupPolicy");
+  const policy = policies.find((p) => p.payload["policyId"] === policyId && p.payload["owner"] === owner);
   if (policy === undefined) {
-    throw new Error(`no BackupPolicy with policyId '${policyId}' visible to ${owner} on ${ownerParticipant}`);
+    throw new Error(
+      `no BackupPolicy with policyId '${policyId}' and owner '${owner}' visible to ${first.party} on ${first.participant}`,
+    );
   }
-  const custodians = policy.payload["custodians"] as string[];
 
-  const [agreements, challenges, responses] = await Promise.all([
-    queryActive(ownerParticipant, owner, ":BackupPolicy:CustodianAgreement"),
-    queryActive(ownerParticipant, owner, ":BackupPolicy:Challenge"),
-    queryActive(ownerParticipant, owner, ":BackupPolicy:ChallengeResponse"),
-  ]);
+  // Challenge/CustodianAgreement/ChallengeResponse each name only ONE
+  // specific custodian as observer (daml/BackupPolicy.daml) — custodian2's
+  // own view never includes custodian3's records, so every custodian must
+  // be queried via its own participant and merged, not just one of them.
+  const perCustodian = await Promise.all(
+    resolved.map(async ({ participant, party }) => {
+      const [agreements, challenges, responses] = await Promise.all([
+        queryActive(participant, party, ":BackupPolicy:CustodianAgreement"),
+        queryActive(participant, party, ":BackupPolicy:Challenge"),
+        queryActive(participant, party, ":BackupPolicy:ChallengeResponse"),
+      ]);
+      return { custodian: party, agreements, challenges, responses };
+    }),
+  );
 
-  const forCustodian = (contracts: ActiveContract[], custodian: string): ActiveContract[] =>
+  const forThisCustodian = (contracts: ActiveContract[], custodian: string): ActiveContract[] =>
     contracts.filter((c) => c.payload["policyId"] === policyId && c.payload["custodian"] === custodian);
 
-  const custodianViews: CustodianView[] = custodians.map((custodian) => {
-    const agreement = forCustodian(agreements, custodian)[0];
-    const openChallenges = forCustodian(challenges, custodian);
-    const custResponses = forCustodian(responses, custodian);
+  const custodianViews: CustodianView[] = perCustodian.map(({ custodian, agreements, challenges, responses }) => {
+    const agreement = forThisCustodian(agreements, custodian)[0];
+    const openChallenges = forThisCustodian(challenges, custodian);
+    const custResponses = forThisCustodian(responses, custodian);
     const lastResponse = [...custResponses].sort((a, b) =>
       String(b.payload["respondedAt"]).localeCompare(String(a.payload["respondedAt"])),
     )[0];
