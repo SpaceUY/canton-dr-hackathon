@@ -54,7 +54,19 @@ val synchronizerId = target.synchronizers.id_of("${synchronizerAlias}")
 
 val proposal = target.topology.party_to_participant_mappings.propose_delta(
   party = partyId,
-  adds = Seq((target.id, ParticipantPermission.Observation)),
+  // Confirmation, not Observation: recovery must restore the party's
+  // ability to ACT (initiate its own commands from the target), not just
+  // receive/observe what others send it. Confirmed the hard way: with
+  // Observation, the counterparty-transacts proof still passed (that only
+  // needs owner to be an observer), but owner itself could never submit its
+  // own commands from the recovered node.
+  // Not Submission: canConfirm is true for both Confirmation and Submission
+  // (TopologyMapping.scala) — Submission additionally lets the PARTICIPANT
+  // sign on the party's behalf, meaningless for an external party that
+  // always signs client-side. participant1, the original undamaged host,
+  // already grants only Confirmation for this party — matching it is the
+  // least-privilege, fidelity-preserving choice.
+  adds = Seq((target.id, ParticipantPermission.Confirmation)),
   store = synchronizerId,
   requiresPartyToBeOnboarded = true,
 )
