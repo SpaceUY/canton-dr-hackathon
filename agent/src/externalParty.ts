@@ -2,15 +2,68 @@
 // signing their own commands via the Interactive Submission Service.
 // Confirmed against the real binary in spikes/external-party/ (see
 // FINDINGS.md) before landing here — this is integration, not exploration.
-import { createPrivateKey, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
+import type { KeyObject } from "node:crypto";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+
+async function keyFileExists(keyPath: string): Promise<boolean> {
+  try {
+    await access(keyPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { "content-type": "application/json" } });
   const text = await res.text();
   if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${url} failed: ${res.status} ${text}`);
   return text.length > 0 ? (JSON.parse(text) as T) : ({} as T);
+}
+
+// Canton's own fingerprint algorithm for a signing public key: SHA-256 of
+// (4-byte big-endian HashPurpose.PublicKeyFingerprint=12) + (the raw 32-byte
+// Ed25519 point, NOT the DER/SPKI wrapper), prefixed with the 2-byte
+// multihash tag Canton uses for all its hashes (0x12 0x20 = sha2-256, 32
+// bytes). Verified against what `/v2/parties/external/generate-topology`
+// itself reports for a freshly generated key before trusting this — a first
+// attempt that hashed the full DER SPKI bytes instead of just the raw key
+// silently computed a plausible-looking but wrong fingerprint.
+function computeKeyFingerprint(publicKey: KeyObject): string {
+  const derSpki = publicKey.export({ format: "der", type: "spki" });
+  const rawKey = derSpki.subarray(derSpki.length - 32);
+  const purposeBytes = Buffer.alloc(4);
+  purposeBytes.writeUInt32BE(12, 0);
+  const digest = createHash("sha256").update(Buffer.concat([purposeBytes, rawKey])).digest();
+  return Buffer.concat([Buffer.from([0x12, 0x20]), digest]).toString("hex");
+}
+
+// Fails loudly, before any signature is produced, if the local private key
+// doesn't cryptographically match the party ID it's about to sign for. This
+// exists because of a real incident: a stale, hand-copied partyId in ad hoc
+// debug scripts caused a valid signature to be produced for the wrong party
+// (mathematically correct, semantically wrong) — reproducible only as
+// "Invalid signature" server-side, hours of debugging to trace back. This
+// check catches that class of mistake at the source, deterministically and
+// instantly, instead of relying on a topology-rejection message to notice.
+function assertKeyMatchesParty(privateKey: KeyObject, partyId: string, context: string): void {
+  const expectedFingerprint = partyId.split("::")[1];
+  if (expectedFingerprint === undefined) {
+    throw new Error(`${context}: unexpected partyId shape '${partyId}' (expected 'hint::fingerprint')`);
+  }
+  const actualFingerprint = computeKeyFingerprint(createPublicKey(privateKey));
+  if (actualFingerprint !== expectedFingerprint) {
+    throw new Error(
+      `${context}: IDENTITY MISMATCH — refusing to sign.\n` +
+        `  party '${partyId}' expects fingerprint ${expectedFingerprint}\n` +
+        `  the local key actually computes to    ${actualFingerprint}\n` +
+        `The key file and the party ID have diverged from each other (stale identity files, wrong ` +
+        `environment, or a corrupted volume). Do not proceed — signing now would produce a valid-looking ` +
+        `signature for the wrong identity.`,
+    );
+  }
 }
 
 export interface ExternalPartyIdentity {
@@ -28,7 +81,8 @@ export async function loadExternalPartyIdentity(keyPath: string): Promise<Extern
   const partyIdPath = keyPath.replace(/\.der$/, ".party-id.txt");
   const existingKeyDer = await readFile(keyPath);
   const existingPartyId = (await readFile(partyIdPath, "utf8")).trim();
-  createPrivateKey({ key: existingKeyDer, format: "der", type: "pkcs8" }); // sanity-check it parses
+  const privateKey = createPrivateKey({ key: existingKeyDer, format: "der", type: "pkcs8" });
+  assertKeyMatchesParty(privateKey, existingPartyId, `loadExternalPartyIdentity(${keyPath})`);
   return { partyId: existingPartyId, keyPath };
 }
 
@@ -41,10 +95,12 @@ export async function allocateExternalParty(
   synchronizerId: string,
   keyPath: string,
 ): Promise<ExternalPartyIdentity> {
-  try {
+  // Only a genuinely missing key file falls through to "allocate fresh" — a
+  // key file that exists but fails to parse or doesn't match its recorded
+  // party ID must fail loudly here, not be silently papered over by minting
+  // a brand new identity (see assertKeyMatchesParty's own comment for why).
+  if (await keyFileExists(keyPath)) {
     return await loadExternalPartyIdentity(keyPath);
-  } catch {
-    // No existing key — allocate fresh.
   }
 
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
@@ -116,6 +172,7 @@ export async function signTopologyHash(
 ): Promise<TopologySignature> {
   const keyDer = await readFile(keyPath);
   const privateKey = createPrivateKey({ key: keyDer, format: "der", type: "pkcs8" });
+  assertKeyMatchesParty(privateKey, partyId, `signTopologyHash(${keyPath})`);
   const fingerprint = partyId.split("::")[1];
   if (fingerprint === undefined) throw new Error(`unexpected partyId shape: ${partyId}`);
   const signature = cryptoSign(null, Buffer.from(hashB64, "base64"), privateKey);
@@ -136,6 +193,7 @@ export async function submitAsExternalParty(
 ): Promise<void> {
   const keyDer = await readFile(keyPath);
   const privateKey = createPrivateKey({ key: keyDer, format: "der", type: "pkcs8" });
+  assertKeyMatchesParty(privateKey, actAsPartyId, `submitAsExternalParty(${keyPath})`);
   const fingerprint = actAsPartyId.split("::")[1];
   if (fingerprint === undefined) throw new Error(`unexpected partyId shape: ${actAsPartyId}`);
 
