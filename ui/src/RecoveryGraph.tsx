@@ -264,7 +264,10 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
         strokeDasharray: "6 4",
       },
       label: identityTransferred ? "identity" : undefined,
-      labelStyle: { fill: "#c4b5fd", fontSize: 11 },
+      labelStyle: { fill: "#c4b5fd", fontSize: 11, fontWeight: 600 },
+      labelBgStyle: { fill: "#1e1030", stroke: "#a855f7", strokeWidth: 1 },
+      labelBgPadding: [6, 4] as [number, number],
+      labelBgBorderRadius: 4,
     },
   ];
 
