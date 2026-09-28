@@ -116,6 +116,7 @@ services:
   # command, which can actually sign owner's own transactions.
   seed:
     build: ../agent
+    image: canton-dr-agent:latest
     command: ["seed"]
     volumes:
       - owner_identity:/canton/identity
@@ -135,6 +136,7 @@ services:
   # separate `agent` service below instead.
   agent1:
     build: ../agent
+    image: canton-dr-agent:latest
     hostname: agent1
     command: ["serve", "--port", "4001"]
     volumes:
@@ -151,6 +153,7 @@ services:
 
   agent2:
     build: ../agent
+    image: canton-dr-agent:latest
     hostname: agent2
     command: ["serve", "--port", "4002"]
     volumes:
@@ -167,6 +170,7 @@ services:
 
   agent3:
     build: ../agent
+    image: canton-dr-agent:latest
     hostname: agent3
     command: ["serve", "--port", "4003"]
     volumes:
@@ -205,6 +209,7 @@ services:
   #     --policy-id demo --challenge-id ch-1
   agent:
     build: ../agent
+    image: canton-dr-agent:latest
     volumes:
       - ./canton:/canton/user-config:ro
       - agent_exports:/canton/exports
@@ -219,6 +224,7 @@ services:
   # ad hoc commands.
   dashboard:
     build: ../agent
+    image: canton-dr-agent:latest
     hostname: dashboard
     command:
       [
