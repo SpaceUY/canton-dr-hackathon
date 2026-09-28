@@ -1,3 +1,14 @@
+Date: 2026-09-29
+Developer: tomascmk
+
+- Wrote the final 5-minute demo script (identity-recovery timebox closed 2026-09-28): opens killing
+  participant1 in the first 10 seconds, closes with a counterparty transacting against the recovered
+  party, three named live-failure points with a plan B each. Vault: Flows/5-Minute Demo Flow.md.
+- Starting the punch list the script surfaced: dashboard status breaking permanently once
+  participant1 dies (P1), a proper command for the closing counterparty-transacts beat (P2), a
+  step-by-step progress indicator for the ~2-minute Recover wait (P3).
+
+---
 Date: 2026-09-28
 Developer: tomascmk
 
