@@ -15,6 +15,20 @@ Developer: tomascmk
     Verified by polling mid-flight and catching it at 2 of 3 steps done.
 - Rebuilt the demo's UI needs into the closed script; docs/README.md flag updates and a full timed
   rehearsal are what's left, no longer any open engineering risk.
+- Built an animated network graph for the Recover flow (user's request — "que se vea impresionante"):
+  React Flow + Framer Motion, 5 nodes (owner's node/destroyed, owner's own backup/unused, two
+  custodians pulsing then turning green as they genuinely respond, recovery target glowing green on
+  success). Backend now emits per-custodian query/response events, not just 3 coarse milestones, so
+  every animation beat maps to something that actually happened.
+- Found and fixed, through the user's own live testing in a real browser: a stale Docker build (own
+  process slip — forgot `make rebuild` after the last backend change), a polling race where a fast/
+  idempotent recovery could finish before the first progress poll ever fired, an edge animating off
+  a UI flag instead of a real event, a real naming bug (a node was labeled with a party — "custodian1"
+  — that doesn't exist anywhere in the code), and a label-clipping rendering bug in the graph library
+  itself (worked around with a custom edge component).
+- Redesigned the layout per feedback: policy/custodian details collapse into an accordion the moment
+  Recover is clicked, and the button became the visual centerpiece of its own section instead of a
+  small inline control.
 
 ---
 Date: 2026-09-28
