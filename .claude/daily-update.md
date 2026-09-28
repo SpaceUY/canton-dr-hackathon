@@ -1,3 +1,27 @@
+Date: 2026-09-28
+Developer: tomascmk
+
+- Investigated the "owner's partyId seemed to change" concern: no reseed bug exists — the identity
+  file never changed. The real cause was forgetting to rebuild the agent Docker image after editing
+  agent/src on 2026-09-25, so create-policy/challenge/request-recovery's earlier "verification" ran
+  old pre-external-party code against a leftover local "owner" party. Re-verified all three for real
+  today against the actual external party — they work correctly.
+- Added a fail-loudly identity guard (assertKeyMatchesParty): any signing operation now verifies the
+  local key's fingerprint matches the partyId first, and fixed a related bug where a key/party
+  mismatch was being silently papered over by allocating a brand new party instead of erroring.
+  Verified both the pass case (real identity) and the fail case (synthetic corrupted party-id file).
+- Timebox check: today is day 5/7 (day 7 = 2026-09-30) — 2 days of runway left, not 5.
+- Verified the full success criterion against the real pipeline (not the spike): custodian2 created a
+  brand-new contract naming the recovered owner as observer, active immediately on participant4.
+- Tested the UI Recover button properly (not just CLI) and found two more real bugs: dashboard.ts's
+  status endpoint had the same identity-resolution bug as the CLI commands, and the UI's success
+  regex broke when recover()'s output format changed. Both fixed. Also found each agent-based
+  docker-compose service (agent1/2/3, dashboard, seed) tags its own separate image — rebuilding
+  `agent` alone never rebuilds the others; fixed the runbook to say rebuild all of them.
+- Started the UI dev server (localhost:5173) — no browser-automation tool available this session, so
+  the actual click-through needs a human or a different tool.
+
+---
 Date: 2026-09-25
 Developer: tomascmk
 
