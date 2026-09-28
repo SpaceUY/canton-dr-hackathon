@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { fetchRecoverProgress, fetchStatus, triggerRecover, type CustodianStatus, type RecoverEvent, type StatusView } from "./api";
+import { IdentityCompare } from "./IdentityCompare";
 import { RecoveryGraph } from "./RecoveryGraph";
 
 // Hardcoded to this project's own demo topology (see infra/docker-compose.yml)
@@ -218,6 +219,7 @@ export function App() {
           </AnimatePresence>
 
           <section className="recovery-hero">
+            <IdentityCompare ownerPartyId={status.owner} recovered={recoverOutcome?.kind === "success"} />
             <p>
               Restores <code>{status.owner}</code>'s state onto <code>{RECOVER_TARGET}</code> using{" "}
               {RECOVER_K} of {status.n} fragments.
