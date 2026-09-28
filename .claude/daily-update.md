@@ -4,9 +4,17 @@ Developer: tomascmk
 - Wrote the final 5-minute demo script (identity-recovery timebox closed 2026-09-28): opens killing
   participant1 in the first 10 seconds, closes with a counterparty transacting against the recovered
   party, three named live-failure points with a plan B each. Vault: Flows/5-Minute Demo Flow.md.
-- Starting the punch list the script surfaced: dashboard status breaking permanently once
-  participant1 dies (P1), a proper command for the closing counterparty-transacts beat (P2), a
-  step-by-step progress indicator for the ~2-minute Recover wait (P3).
+- Closed the punch list the script surfaced, in the priority order given:
+  - P1: dashboard status now queries via the custodians' own participants, not owner's — verified by
+    genuinely killing participant1 (stop+rm+volume rm, not simulated) and confirming status, recover,
+    and the closing command all kept working afterward.
+  - P2: new `agent counterparty-tx` command for the closing beat — resolves both party ids itself,
+    no more hand-typed 60+ character hashes. Verified on-chain.
+  - P3: Recover now shows real step-by-step progress (identity re-authorized → key reconstructed →
+    state restored) via a new /recover-progress endpoint, not a bare spinner or a fake timer.
+    Verified by polling mid-flight and catching it at 2 of 3 steps done.
+- Rebuilt the demo's UI needs into the closed script; docs/README.md flag updates and a full timed
+  rehearsal are what's left, no longer any open engineering risk.
 
 ---
 Date: 2026-09-28
