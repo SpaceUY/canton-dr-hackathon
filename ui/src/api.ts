@@ -43,3 +43,15 @@ export async function triggerRecover(req: RecoverRequest): Promise<string> {
   if (!res.ok) throw new Error(body.error ?? `POST /recover failed: ${res.status}`);
   return body.result ?? "";
 }
+
+// Real execution order (see agent/src/recover.ts) — identity is
+// re-authorized before the encryption key is even touched, not "key first"
+// as the narration might suggest.
+export type RecoverStep = "identity-reauthorized" | "key-reconstructed" | "state-restored";
+
+export async function fetchRecoverProgress(): Promise<RecoverStep[]> {
+  const res = await fetch(`${API_URL}/recover-progress`);
+  const body = (await res.json()) as { steps?: RecoverStep[] };
+  if (!res.ok) return [];
+  return body.steps ?? [];
+}

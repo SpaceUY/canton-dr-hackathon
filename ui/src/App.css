@@ -86,6 +86,20 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+.recover-steps {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.recover-steps .step-pending {
+  opacity: 0.5;
+}
+
 .recover-outcome {
   margin-top: 1rem;
   padding: 0.75rem;

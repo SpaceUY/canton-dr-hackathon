@@ -1,5 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
-import { fetchStatus, triggerRecover, type CustodianStatus, type StatusView } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  fetchRecoverProgress,
+  fetchStatus,
+  triggerRecover,
+  type CustodianStatus,
+  type RecoverStep,
+  type StatusView,
+} from "./api";
+
+// Real order (see agent/src/recover.ts) — identity is re-authorized before
+// the encryption key is even touched, not "key first".
+const RECOVER_STEPS: RecoverStep[] = ["identity-reauthorized", "key-reconstructed", "state-restored"];
+const RECOVER_STEP_LABEL: Record<RecoverStep, string> = {
+  "identity-reauthorized": "Identity re-authorized on the target node",
+  "key-reconstructed": "Encryption key reconstructed from fragments",
+  "state-restored": "State imported",
+};
 
 // Hardcoded to this project's own demo topology (see infra/docker-compose.yml)
 // — a minimal UI, not a general-purpose admin tool.
@@ -59,6 +75,8 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [recovering, setRecovering] = useState(false);
   const [recoverOutcome, setRecoverOutcome] = useState<RecoverOutcome | null>(null);
+  const [recoverProgress, setRecoverProgress] = useState<RecoverStep[]>([]);
+  const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
     fetchStatus()
@@ -76,10 +94,24 @@ export function App() {
     return () => clearInterval(id);
   }, [load]);
 
+  useEffect(() => {
+    return () => {
+      if (progressPollRef.current !== null) clearInterval(progressPollRef.current);
+    };
+  }, []);
+
   const handleRecover = async () => {
     if (status === null) return;
     setRecovering(true);
     setRecoverOutcome(null);
+    setRecoverProgress([]);
+    // Real progress from the backend (agent/src/recover.ts calls onProgress
+    // as each step actually lands), not a client-side timer guessing at
+    // durations — a real re-authorization + restore can take anywhere from
+    // a few seconds to well over a minute.
+    progressPollRef.current = setInterval(() => {
+      void fetchRecoverProgress().then(setRecoverProgress);
+    }, 800);
     try {
       const result = await triggerRecover({
         targetParticipant: RECOVER_TARGET,
@@ -91,6 +123,8 @@ export function App() {
       const message = err instanceof Error ? err.message : String(err);
       setRecoverOutcome({ kind: "error", summary: message, raw: message });
     } finally {
+      if (progressPollRef.current !== null) clearInterval(progressPollRef.current);
+      progressPollRef.current = null;
       setRecovering(false);
     }
   };
@@ -168,6 +202,16 @@ export function App() {
             <button onClick={() => void handleRecover()} disabled={recovering}>
               {recovering ? "Recovering..." : "Recover"}
             </button>
+            {recovering && (
+              <ul className="recover-steps">
+                {RECOVER_STEPS.map((step) => (
+                  <li key={step} className={recoverProgress.includes(step) ? "step-done" : "step-pending"}>
+                    {recoverProgress.includes(step) ? "✅ " : "⏳ "}
+                    {RECOVER_STEP_LABEL[step]}
+                  </li>
+                ))}
+              </ul>
+            )}
             {recoverOutcome !== null && (
               <div className={`recover-outcome recover-${recoverOutcome.kind}`}>
                 <p>

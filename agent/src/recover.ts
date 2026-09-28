@@ -13,6 +13,11 @@ import { restore } from "./restore.js";
 // wrong even as a fallback.
 const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der";
 
+// Real execution order, not the more intuitive-sounding "key first": identity
+// is re-authorized before the encryption key is even touched, so the target
+// has legitimate hosting rights before anything about the ACS happens.
+export type RecoverStep = "identity-reauthorized" | "key-reconstructed" | "state-restored";
+
 export interface RecoverOptions {
   targetParticipant: string;
   targetLedgerApi: string;
@@ -20,10 +25,12 @@ export interface RecoverOptions {
   policyId: string;
   endpoints: string[];
   threshold: number;
+  onProgress?: (step: RecoverStep) => void;
 }
 
 export async function recover(options: RecoverOptions): Promise<string> {
-  const { targetParticipant, targetLedgerApi, loaderParticipant, policyId, endpoints, threshold } = options;
+  const { targetParticipant, targetLedgerApi, loaderParticipant, policyId, endpoints, threshold, onProgress } =
+    options;
   if (endpoints.length < threshold) {
     throw new Error(`need at least ${threshold} endpoints, got ${endpoints.length}`);
   }
@@ -38,6 +45,7 @@ export async function recover(options: RecoverOptions): Promise<string> {
       loaderParticipant,
       keyPath: owner.keyPath,
     });
+    onProgress?.("identity-reauthorized");
 
     const blob = await fetchFirstAvailable(endpoints.map((e) => `${e}/custody/${policyId}/blob`));
     const encryptedPath = join(workDir, "acs.enc");
@@ -56,8 +64,10 @@ export async function recover(options: RecoverOptions): Promise<string> {
     const key = await combine(shares);
     const acsPath = join(workDir, "acs.bin");
     await decryptFile(encryptedPath, acsPath, key);
+    onProgress?.("key-reconstructed");
 
     const restoreLine = await restore({ targetParticipant, inFile: acsPath });
+    onProgress?.("state-restored");
     return `RECOVER_OK: reconstructed key from ${shares.length}/${endpoints.length} shares; ${rehostLine}; ${restoreLine}`;
   } finally {
     await rm(workDir, { recursive: true, force: true });
