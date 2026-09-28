@@ -1,6 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { queryActive, resolveParty, type ActiveContract } from "./ledger.js";
+import { queryActive, type ActiveContract } from "./ledger.js";
+import { loadExternalPartyIdentity } from "./externalParty.js";
 import { recover } from "./recover.js";
+
+// Same identity seed.ts allocated `owner` under — see createPolicy.ts for
+// why this replaces resolveParty for the owner side of things. ownerPartyHint
+// stays in DashboardOptions/the CLI flag for backwards-compatible startup
+// invocation, but is no longer used to resolve the party itself.
+const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der";
 
 export interface DashboardOptions {
   port: number;
@@ -106,7 +113,7 @@ async function handle(
 
   try {
     if (req.method === "GET" && req.url === "/status") {
-      const status = await getStatus(ownerParticipant, ownerPartyHint, policyId);
+      const status = await getStatus(ownerParticipant, policyId);
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(status));
       return;
     }
@@ -176,12 +183,8 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function getStatus(
-  ownerParticipant: string,
-  ownerPartyHint: string,
-  policyId: string,
-): Promise<StatusView> {
-  const owner = await resolveParty(ownerParticipant, ownerPartyHint);
+async function getStatus(ownerParticipant: string, policyId: string): Promise<StatusView> {
+  const owner = (await loadExternalPartyIdentity(OWNER_KEY_PATH)).partyId;
 
   const policies = await queryActive(ownerParticipant, owner, ":BackupPolicy:BackupPolicy");
   const policy = policies.find((p) => p.payload["policyId"] === policyId);

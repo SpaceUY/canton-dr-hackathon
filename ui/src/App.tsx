@@ -25,18 +25,23 @@ function shortHash(hash: string): string {
 }
 
 // recover.ts's own return shape: "RECOVER_OK: reconstructed key from X/Y
-// shares; RESTORE_OK: <path> imported into <target>". Y there is
-// endpoints.length — how many custodians this particular recovery attempt
-// queried (this demo deliberately queries only 2 of the 3, skipping the
-// owner's own share, to prove the threshold — see RECOVER_ENDPOINTS above),
-// not the scheme's real total. Use the policy's own `n` for the human
-// summary instead, so it doesn't contradict the "2 of 3" already shown
-// above the button. Best-effort — if the raw format ever changes, the raw
-// string is still shown below, so nothing is lost, only the summary.
+// shares; REHOST_OK: ...; RESTORE_OK: <path> imported into <target>". Y
+// there is endpoints.length — how many custodians this particular recovery
+// attempt queried (this demo deliberately queries only 2 of the 3, skipping
+// the owner's own share, to prove the threshold — see RECOVER_ENDPOINTS
+// above), not the scheme's real total. Use the policy's own `n` for the
+// human summary instead, so it doesn't contradict the "2 of 3" already shown
+// above the button. The REHOST_OK segment (added when identity recovery
+// landed) isn't surfaced separately here — its content (re-hosted vs.
+// already-hosted) doesn't change what the user needs to know, just that it
+// happened; skip over it rather than parse its two variants. Best-effort —
+// if the raw format ever changes, the raw string is still shown below, so
+// nothing is lost, only the summary.
 function parseRecoverResult(raw: string, totalFragments: string): string | null {
-  const match = /^RECOVER_OK: reconstructed key from (\d+)\/\d+ shares; RESTORE_OK: .+ imported into (\S+)$/.exec(
-    raw,
-  );
+  const match =
+    /^RECOVER_OK: reconstructed key from (\d+)\/\d+ shares; REHOST_OK: .+; RESTORE_OK: .+ imported into (\S+)$/.exec(
+      raw,
+    );
   if (match === null) return null;
   const [, used, target] = match;
   return `Reconstructed the key from ${used} of ${totalFragments} fragments and restored the state onto ${target}.`;
