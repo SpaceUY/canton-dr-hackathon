@@ -14,6 +14,7 @@ type NodeStatus = "idle" | "dead" | "querying" | "responded" | "no-response" | "
 
 interface NodeVisualData extends Record<string, unknown> {
   label: string;
+  techId: string;
   sublabel: string;
   status: NodeStatus;
   kind: "owner-home" | "custodian" | "target";
@@ -76,7 +77,10 @@ function NetworkNode({ data }: NodeProps<Node<NodeVisualData>>) {
         </AnimatePresence>
         {data.label}
       </div>
-      <div style={{ fontSize: "0.75rem", opacity: 0.7, marginTop: 2 }}>{data.sublabel}</div>
+      <div style={{ fontSize: "0.68rem", opacity: 0.45, fontFamily: "monospace", marginTop: 1 }}>
+        {data.techId}
+      </div>
+      <div style={{ fontSize: "0.75rem", opacity: 0.7, marginTop: 3 }}>{data.sublabel}</div>
     </motion.div>
   );
 }
@@ -166,7 +170,13 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       id: "participant1",
       type: "network",
       position: { x: 0, y: 0 },
-      data: { label: "participant1", sublabel: "Owner's original node — destroyed", status: "dead", kind: "owner-home" },
+      data: {
+        label: "Owner's node",
+        techId: "participant1",
+        sublabel: "Destroyed",
+        status: "dead",
+        kind: "owner-home",
+      },
       draggable: false,
     },
     {
@@ -174,8 +184,9 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       type: "network",
       position: { x: 0, y: 130 },
       data: {
-        label: "agent1 (custodian1)",
-        sublabel: "Not queried — 2 of 3 is enough",
+        label: "Owner's own backup",
+        techId: "agent1",
+        sublabel: "Not needed — 2 external fragments are enough",
         status: "idle",
         kind: "custodian",
       },
@@ -186,7 +197,8 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       type: "network",
       position: { x: 0, y: 250 },
       data: {
-        label: "agent2 (custodian2)",
+        label: "Custodian 2",
+        techId: "agent2",
         sublabel:
           custodianStatus.agent2 === "responded"
             ? "Fragment sent"
@@ -203,7 +215,8 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       type: "network",
       position: { x: 0, y: 370 },
       data: {
-        label: "agent3 (custodian3)",
+        label: "Custodian 3",
+        techId: "agent3",
         sublabel:
           custodianStatus.agent3 === "responded"
             ? "Fragment sent"
@@ -219,7 +232,13 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       id: "participant4",
       type: "network",
       position: { x: 480, y: 185 },
-      data: { label: "participant4", sublabel: targetSublabel, status: targetStatus, kind: "target" },
+      data: {
+        label: "Recovery target",
+        techId: "participant4",
+        sublabel: targetSublabel,
+        status: targetStatus,
+        kind: "target",
+      },
       draggable: false,
     },
   ];
@@ -263,7 +282,7 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
         strokeWidth: identityTransferred ? 2.5 : 1,
         strokeDasharray: "6 4",
       },
-      label: identityTransferred ? "identity" : undefined,
+      label: identityTransferred ? "same identity" : undefined,
       labelStyle: { fill: "#c4b5fd", fontSize: 11, fontWeight: 600 },
       labelBgStyle: { fill: "#1e1030", stroke: "#a855f7", strokeWidth: 1 },
       labelBgPadding: [6, 4] as [number, number],
