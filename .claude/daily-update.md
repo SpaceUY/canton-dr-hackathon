@@ -20,6 +20,20 @@ Developer: tomascmk
   `agent` alone never rebuilds the others; fixed the runbook to say rebuild all of them.
 - Started the UI dev server (localhost:5173) — no browser-automation tool available this session, so
   the actual click-through needs a human or a different tool.
+- User clicked Recover in a real browser — confirmed working, friendly success banner rendered
+  correctly.
+- Fixed the root cause of "forgot to rebuild before testing" for good: all six agent-based
+  docker-compose services now share one image tag (canton-dr-agent:latest) instead of one each, and
+  `make rebuild` (repo root) is the one command to run after editing agent/src. Verified all four
+  long-running containers report the same image SHA after one `make rebuild`.
+- Cleaned up a related dead-code landmine in acceptCustody.ts (an unused resolveParty(owner) call —
+  same dangerous pattern, just never wired up to anything yet).
+- Implemented and verified Shamir protection for the identity key itself (distribute-identity/
+  recover-identity), completing the full one-week identity-recovery timebox two days early. Verified
+  with a real destructive test: deleted the actual identity file, rebuilt it from 2 of 3 custodian
+  shares, signed a real transaction with the restored identity, confirmed on-chain. Found and fixed a
+  fourth instance of the "picked the wrong stale candidate" bug pattern along the way (this time in
+  the new recover-identity code itself, matching by BackupPolicy).
 
 ---
 Date: 2026-09-25
