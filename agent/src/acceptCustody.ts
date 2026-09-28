@@ -15,10 +15,19 @@ export interface AcceptCustodyOptions {
 }
 
 export async function acceptCustody(options: AcceptCustodyOptions): Promise<string> {
-  const { as, participant, custodianPartyHint, ownerParticipant, ownerPartyHint, policyId } = options;
+  // ownerParticipant/ownerPartyHint are accepted (cli.ts's --owner-participant/
+  // --owner flags stay valid for demo scripts that already pass them) but
+  // unused: this function queries BackupPolicy via the custodian's own
+  // participant (custodian is an observer on it), never via owner's. A
+  // previous version resolved `owner` here anyway and never used it — dead
+  // code that silently did a resolveParty(ownerParticipant, ownerPartyHint)
+  // lookup, which resolves via participant+hint, not the real external
+  // identity (see ADR-007/ADR-008 in the vault for why that's dangerous:
+  // it can return an unrelated stale local party of the same name). Removed
+  // rather than left as a landmine for a future edit to accidentally wire up.
+  const { as, participant, custodianPartyHint, policyId } = options;
 
   const custodian = await resolveParty(participant, custodianPartyHint);
-  const owner = await resolveParty(ownerParticipant, ownerPartyHint);
 
   const blob = await readFile(join(DATA_DIR, as, policyId, "blob.enc"));
   const blobHash = createHash("sha256").update(blob).digest("hex");
