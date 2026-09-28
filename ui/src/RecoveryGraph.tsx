@@ -252,7 +252,12 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       id: "e-identity",
       source: "participant1",
       target: "participant4",
-      animated: recovering && !identityTransferred,
+      // Driven by the paced reveal (!finished), not the raw `recovering`
+      // flag — a fast/idempotent recovery can flip `recovering` back to
+      // false well before the reveal queue (see revealedCount above) has
+      // caught up, which used to freeze this edge mid-animation instead of
+      // riding out the same pacing every other node already follows.
+      animated: !identityTransferred && !finished,
       style: {
         stroke: identityTransferred ? "#a855f7" : "#3f3f46",
         strokeWidth: identityTransferred ? 2.5 : 1,

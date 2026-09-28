@@ -93,18 +93,28 @@ export function App() {
     // Real progress from the backend (agent/src/recover.ts calls onProgress
     // as each step actually lands), not a client-side timer guessing at
     // durations — a real re-authorization + restore can take anywhere from
-    // a few seconds to well over a minute.
+    // a few seconds to well over a minute. But it can ALSO finish in well
+    // under one polling interval (e.g. re-hosting an already-hosted party is
+    // near-instant) — if the POST /recover promise resolves before the
+    // first scheduled poll ever fires, recoverProgress stays empty for the
+    // whole thing and the graph shows nothing but the identity edge (which
+    // animates off `recovering` alone, not a real event). Poll immediately
+    // on start, and once more right after the request settles, so the full
+    // event list is captured even when the operation is nearly instant.
+    void fetchRecoverProgress().then(setRecoverProgress);
     progressPollRef.current = setInterval(() => {
       void fetchRecoverProgress().then(setRecoverProgress);
-    }, 800);
+    }, 400);
     try {
       const result = await triggerRecover({
         targetParticipant: RECOVER_TARGET,
         endpoints: RECOVER_ENDPOINTS,
         k: RECOVER_K,
       });
+      setRecoverProgress(await fetchRecoverProgress());
       setRecoverOutcome({ kind: "success", summary: parseRecoverResult(result, status.n) ?? result, raw: result });
     } catch (err) {
+      setRecoverProgress(await fetchRecoverProgress().catch(() => []));
       const message = err instanceof Error ? err.message : String(err);
       setRecoverOutcome({ kind: "error", summary: message, raw: message });
     } finally {
