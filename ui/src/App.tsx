@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { fetchRecoverProgress, fetchStatus, triggerRecover, type CustodianStatus, type RecoverEvent, type StatusView } from "./api";
 import { RecoveryGraph } from "./RecoveryGraph";
 
@@ -61,6 +62,10 @@ export function App() {
   const [recovering, setRecovering] = useState(false);
   const [recoverOutcome, setRecoverOutcome] = useState<RecoverOutcome | null>(null);
   const [recoverProgress, setRecoverProgress] = useState<RecoverEvent[]>([]);
+  // Collapsed automatically once a recovery starts, so the graph is the only
+  // thing competing for attention — reopen it manually afterward if you want
+  // to check the policy/custodian details again.
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
@@ -90,6 +95,7 @@ export function App() {
     setRecovering(true);
     setRecoverOutcome(null);
     setRecoverProgress([]);
+    setDetailsOpen(false);
     // Real progress from the backend (agent/src/recover.ts calls onProgress
     // as each step actually lands), not a client-side timer guessing at
     // durations — a real re-authorization + restore can take anywhere from
@@ -141,64 +147,86 @@ export function App() {
 
       {status !== null && (
         <>
-          <section>
-            <p>
-              Policy <code>{status.policyId}</code> — owner <code>{status.owner}</code>
-            </p>
-            <p>
-              k={status.k} n={status.n} frequency={status.frequencyHours}h
-            </p>
-            <p className="hint">
-              n includes the owner's own fragment — it isn't listed below since the owner doesn't
-              challenge itself.
-            </p>
-          </section>
+          <button
+            type="button"
+            className="details-toggle"
+            onClick={() => setDetailsOpen((v) => !v)}
+            aria-expanded={detailsOpen}
+          >
+            <span className={`chevron ${detailsOpen ? "chevron-open" : ""}`}>▸</span>
+            Policy &amp; custodians
+          </button>
 
-          <section>
-            <h2>Custodians</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Custodian</th>
-                  <th>Custody accepted</th>
-                  <th>Blob hash</th>
-                  <th>Open challenges</th>
-                  <th>Last response</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {status.custodians.map((c) => (
-                  <tr key={c.custodian} className={`status-${c.status}`}>
-                    <td>{c.custodian}</td>
-                    <td>{c.acceptedCustody ? "yes" : "no"}</td>
-                    <td>
-                      {c.blobHash !== null ? (
-                        <code title={c.blobHash}>{shortHash(c.blobHash)}</code>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>{c.openChallenges}</td>
-                    <td>{c.lastResponseAt ?? "—"}</td>
-                    <td>{STATUS_LABEL[c.status]}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+          <AnimatePresence initial={false}>
+            {detailsOpen && (
+              <motion.div
+                key="details"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25, ease: "easeInOut" }}
+                style={{ overflow: "hidden" }}
+              >
+                <section>
+                  <p>
+                    Policy <code>{status.policyId}</code> — owner <code>{status.owner}</code>
+                  </p>
+                  <p>
+                    k={status.k} n={status.n} frequency={status.frequencyHours}h
+                  </p>
+                  <p className="hint">
+                    n includes the owner's own fragment — it isn't listed below since the owner doesn't
+                    challenge itself.
+                  </p>
+                </section>
 
-          <section>
-            <h2>Recovery</h2>
+                <section>
+                  <h2>Custodians</h2>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Custodian</th>
+                        <th>Custody accepted</th>
+                        <th>Blob hash</th>
+                        <th>Open challenges</th>
+                        <th>Last response</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {status.custodians.map((c) => (
+                        <tr key={c.custodian} className={`status-${c.status}`}>
+                          <td>{c.custodian}</td>
+                          <td>{c.acceptedCustody ? "yes" : "no"}</td>
+                          <td>
+                            {c.blobHash !== null ? (
+                              <code title={c.blobHash}>{shortHash(c.blobHash)}</code>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td>{c.openChallenges}</td>
+                          <td>{c.lastResponseAt ?? "—"}</td>
+                          <td>{STATUS_LABEL[c.status]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <section className="recovery-hero">
             <p>
               Restores <code>{status.owner}</code>'s state onto <code>{RECOVER_TARGET}</code> using{" "}
               {RECOVER_K} of {status.n} fragments.
             </p>
-            <button onClick={() => void handleRecover()} disabled={recovering}>
-              {recovering ? "Recovering..." : "Recover"}
+            <button className="recover-button" onClick={() => void handleRecover()} disabled={recovering}>
+              {recovering ? "Recovering…" : "Recover"}
             </button>
             {(recovering || recoverProgress.length > 0) && (
-              <div style={{ marginTop: "1rem" }}>
+              <div style={{ marginTop: "1.5rem" }}>
                 <RecoveryGraph
                   events={recoverProgress}
                   recovering={recovering}

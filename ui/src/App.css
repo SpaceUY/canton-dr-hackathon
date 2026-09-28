@@ -10,7 +10,7 @@ body {
 }
 
 .app {
-  max-width: 800px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 2rem 1rem;
 }
@@ -84,6 +84,60 @@ button:disabled {
 .retry-button {
   padding: 0.2rem 0.6rem;
   font-size: 0.85rem;
+}
+
+.details-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: #1c1f26;
+  color: #e4e6eb;
+  border: 1px solid #2a2e37;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 6px;
+  margin-top: 1.5rem;
+}
+
+.details-toggle:hover {
+  background: #23272f;
+}
+
+.chevron {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.chevron-open {
+  transform: rotate(90deg);
+}
+
+.recovery-hero {
+  margin-top: 2rem;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  border: 1px solid #2a2e37;
+  border-radius: 12px;
+  background: radial-gradient(ellipse at top, #161a22 0%, #0f1115 70%);
+}
+
+.recovery-hero p {
+  color: #94a3b8;
+  margin-bottom: 1.25rem;
+}
+
+.recover-button {
+  font-size: 1.15rem;
+  font-weight: 600;
+  padding: 0.9rem 2.5rem;
+  border-radius: 10px;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.35);
+}
+
+.recover-button:not(:disabled):hover {
+  box-shadow: 0 0 32px rgba(59, 130, 246, 0.55);
 }
 
 .recover-steps {
