@@ -11,6 +11,15 @@ import { allocateExternalParty, submitAsExternalParty } from "./externalParty.js
 
 const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der";
 
+// Real positions to lose, not an abstract "Record" — what a judge sees
+// destroyed and recovered is a counterparty name and a signed amount, not a
+// contract id. See daml/Position.daml.
+const POSITIONS: { label: string; counterparty: string; amount: string; currency: string }[] = [
+  { label: "position-1", counterparty: "Northwind Trading", amount: "125000.00", currency: "EUR" },
+  { label: "position-2", counterparty: "Meridian Capital", amount: "-48250.50", currency: "USD" },
+  { label: "position-3", counterparty: "Solvay Chemicals", amount: "76900.00", currency: "USD" },
+];
+
 export async function seed(): Promise<string> {
   const participant1 = "http://participant1:5013";
   const synchronizerId = await getSynchronizerId("participant1:5013");
@@ -44,6 +53,33 @@ export async function seed(): Promise<string> {
     );
   }
 
+  const existingPositions = await queryActive("participant1:5013", owner.partyId, ":Position:Position");
+  const seededLabels = new Set(existingPositions.map((c) => c.payload["label"]));
+  const missing = POSITIONS.filter((p) => !seededLabels.has(p.label));
+
+  if (missing.length > 0) {
+    await submitAsExternalParty(
+      participant1,
+      synchronizerId,
+      owner.partyId,
+      owner.keyPath,
+      missing.map((p) => ({
+        CreateCommand: {
+          templateId: "#canton-dr:Position:Position",
+          createArguments: {
+            owner: owner.partyId,
+            custodians: [custodian2, custodian3],
+            counterparty: p.counterparty,
+            amount: p.amount,
+            currency: p.currency,
+            label: p.label,
+          },
+        },
+      })),
+      "seed-positions-1",
+    );
+  }
+
   // Custodians index the transaction into their own ACS asynchronously —
   // poll like the original bash script did.
   for (const [participant, party] of [
@@ -59,12 +95,23 @@ export async function seed(): Promise<string> {
     if (!seen) {
       throw new Error(`VERIFICATION FAILED: no Record with label 'seed' visible to ${party} on ${participant}`);
     }
+
+    let allPositionsSeen = false;
+    for (let attempt = 0; attempt < 20 && !allPositionsSeen; attempt++) {
+      const contracts = await queryActive(participant, party, ":Position:Position");
+      const labels = new Set(contracts.map((c) => c.payload["label"]));
+      allPositionsSeen = POSITIONS.every((p) => labels.has(p.label));
+      if (!allPositionsSeen) await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (!allPositionsSeen) {
+      throw new Error(`VERIFICATION FAILED: not all ${POSITIONS.length} Positions visible to ${party} on ${participant}`);
+    }
   }
 
   return (
     `owner=${owner.partyId}\n` +
     `custodian2=${custodian2}\n` +
     `custodian3=${custodian3}\n` +
-    `SEED_OK: Record verified in the ACS of all 3 participants (owner + 2 custodians)`
+    `SEED_OK: Record + ${POSITIONS.length} Positions verified in the ACS of all 3 participants (owner + 2 custodians)`
   );
 }

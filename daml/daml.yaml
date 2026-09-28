@@ -7,7 +7,7 @@ build-options:
   - --target=2.1
 name: canton-dr
 source: .
-version: 0.1.0
+version: 0.2.0
 dependencies:
   - daml-prim
   - daml-stdlib
