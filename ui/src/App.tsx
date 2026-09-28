@@ -1,8 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { fetchRecoverProgress, fetchStatus, triggerRecover, type CustodianStatus, type RecoverEvent, type StatusView } from "./api";
+import {
+  fetchCiphertext,
+  fetchPositions,
+  fetchRecoverProgress,
+  fetchStatus,
+  triggerRecover,
+  type CiphertextSample,
+  type CustodianStatus,
+  type PositionView,
+  type RecoverEvent,
+  type StatusView,
+} from "./api";
+import { CiphertextPanel } from "./CiphertextPanel";
 import { IdentityCompare } from "./IdentityCompare";
+import { Positions } from "./Positions";
+import { PreDisasterStrip } from "./PreDisasterStrip";
 import { RecoveryGraph } from "./RecoveryGraph";
+import { RecoveryTimer } from "./RecoveryTimer";
 
 // Hardcoded to this project's own demo topology (see infra/docker-compose.yml)
 // — a minimal UI, not a general-purpose admin tool.
@@ -58,11 +73,15 @@ interface RecoverOutcome {
 
 export function App() {
   const [status, setStatus] = useState<StatusView | null>(null);
+  const [positions, setPositions] = useState<PositionView[]>([]);
+  const [ciphertext, setCiphertext] = useState<CiphertextSample | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [recovering, setRecovering] = useState(false);
   const [recoverOutcome, setRecoverOutcome] = useState<RecoverOutcome | null>(null);
   const [recoverProgress, setRecoverProgress] = useState<RecoverEvent[]>([]);
+  const [recoverStartedAt, setRecoverStartedAt] = useState<number | null>(null);
+  const [recoverEndedAt, setRecoverEndedAt] = useState<number | null>(null);
   // Collapsed automatically once a recovery starts, so the graph is the only
   // thing competing for attention — reopen it manually afterward if you want
   // to check the policy/custodian details again.
@@ -86,6 +105,11 @@ export function App() {
   }, [load]);
 
   useEffect(() => {
+    void fetchPositions().then(setPositions);
+    void fetchCiphertext().then(setCiphertext);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (progressPollRef.current !== null) clearInterval(progressPollRef.current);
     };
@@ -97,6 +121,8 @@ export function App() {
     setRecoverOutcome(null);
     setRecoverProgress([]);
     setDetailsOpen(false);
+    setRecoverStartedAt(Date.now());
+    setRecoverEndedAt(null);
     // Real progress from the backend (agent/src/recover.ts calls onProgress
     // as each step actually lands), not a client-side timer guessing at
     // durations — a real re-authorization + restore can take anywhere from
@@ -128,6 +154,7 @@ export function App() {
       if (progressPollRef.current !== null) clearInterval(progressPollRef.current);
       progressPollRef.current = null;
       setRecovering(false);
+      setRecoverEndedAt(Date.now());
     }
   };
 
@@ -148,6 +175,8 @@ export function App() {
 
       {status !== null && (
         <>
+          <PreDisasterStrip custodians={status.custodians} />
+
           <button
             type="button"
             className="details-toggle"
@@ -214,6 +243,9 @@ export function App() {
                     </tbody>
                   </table>
                 </section>
+
+                <Positions positions={positions} />
+                <CiphertextPanel ciphertext={ciphertext} positions={positions} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -227,6 +259,7 @@ export function App() {
             <button className="recover-button" onClick={() => void handleRecover()} disabled={recovering}>
               {recovering ? "Recovering…" : "Recover"}
             </button>
+            <RecoveryTimer startedAt={recoverStartedAt} endedAt={recoverEndedAt} />
             {(recovering || recoverProgress.length > 0) && (
               <div style={{ marginTop: "1.5rem" }}>
                 <RecoveryGraph

@@ -76,6 +76,13 @@ interface StatusView {
   custodians: CustodianView[];
 }
 
+interface PositionView {
+  counterparty: string;
+  amount: string;
+  currency: string;
+  label: string;
+}
+
 // Owner-facing read/status API + the recovery trigger for the UI (plan
 // step 7). Separate from `serve` (the custodian-side blob/share storage
 // server that runs on agent1/2/3) — this is a different concern, run once
@@ -132,6 +139,18 @@ async function handle(
     if (req.method === "GET" && req.url === "/status") {
       const status = await getStatus(statusCustodians, policyId);
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(status));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/positions") {
+      const positions = await getPositions(statusCustodians);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ positions }));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/ciphertext") {
+      const ciphertext = await getCiphertextSample(recoverEndpoints, policyId);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(ciphertext));
       return;
     }
 
@@ -207,6 +226,57 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+// What a judge sees destroyed and recovered — real counterparties and
+// signed amounts (daml/Position.daml), not the abstract seed Record.
+// Queried via a custodian's own participant, same "never trust owner's own
+// participant to be alive" rule as getStatus below — Position is an
+// observer contract for every custodian equally, so the first one is
+// enough (no per-custodian filtering needed, unlike Challenge/etc).
+async function getPositions(statusCustodians: CustodianRef[]): Promise<PositionView[]> {
+  if (statusCustodians.length === 0) throw new Error("no custodians configured for position queries");
+  const first = statusCustodians[0];
+  if (first === undefined) throw new Error("no custodians configured for position queries");
+  const party = await resolveParty(first.participant, first.partyHint);
+  const contracts = await queryActive(first.participant, party, ":Position:Position");
+  return contracts.map((c) => ({
+    counterparty: String(c.payload["counterparty"]),
+    amount: String(c.payload["amount"]),
+    currency: String(c.payload["currency"]),
+    label: String(c.payload["label"]),
+  }));
+}
+
+interface CiphertextSample {
+  custodianEndpoint: string;
+  policyId: string;
+  byteLength: number;
+  hexPreview: string;
+}
+
+// The custodian's own view — real bytes fetched from its actual custody
+// store (agent/src/server.ts's GET /custody/:policyId/blob), the same file
+// distributeBlob() wrote and recover() reads back. Not a terminal `xxd` of
+// the same file — the UI panel shown alongside real Positions, proving the
+// custodian never held plaintext.
+async function getCiphertextSample(recoverEndpoints: string[], policyId: string): Promise<CiphertextSample> {
+  // recoverEndpoints[0] is agent1 — owner's OWN self-custody backup copy,
+  // not a custodian (see RecoveryGraph.tsx's labeling). The demo's point is
+  // that a real, independent CUSTODIAN never saw plaintext, so pick the
+  // first genuine custodian server instead — falling back to index 0 only
+  // if this dashboard is somehow configured with a single endpoint.
+  const endpoint = recoverEndpoints[1] ?? recoverEndpoints[0];
+  if (endpoint === undefined) throw new Error("no custodian endpoints configured");
+  const res = await fetch(`${endpoint}/custody/${policyId}/blob`);
+  if (!res.ok) throw new Error(`GET ${endpoint}/custody/${policyId}/blob failed: ${res.status}`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  return {
+    custodianEndpoint: endpoint,
+    policyId,
+    byteLength: bytes.length,
+    hexPreview: bytes.subarray(0, 256).toString("hex"),
+  };
 }
 
 async function getStatus(statusCustodians: CustodianRef[], policyId: string): Promise<StatusView> {

@@ -27,6 +27,33 @@ export async function fetchStatus(): Promise<StatusView> {
   return body;
 }
 
+export interface PositionView {
+  counterparty: string;
+  amount: string;
+  currency: string;
+  label: string;
+}
+
+export async function fetchPositions(): Promise<PositionView[]> {
+  const res = await fetch(`${API_URL}/positions`);
+  const body = (await res.json()) as { positions?: PositionView[] };
+  if (!res.ok) return [];
+  return body.positions ?? [];
+}
+
+export interface CiphertextSample {
+  custodianEndpoint: string;
+  policyId: string;
+  byteLength: number;
+  hexPreview: string;
+}
+
+export async function fetchCiphertext(): Promise<CiphertextSample | null> {
+  const res = await fetch(`${API_URL}/ciphertext`);
+  if (!res.ok) return null;
+  return (await res.json()) as CiphertextSample;
+}
+
 export interface RecoverRequest {
   targetParticipant: string;
   endpoints: string[];

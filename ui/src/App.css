@@ -86,6 +86,39 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+.pre-disaster-strip {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.pre-disaster-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid #2a2e37;
+  background: #14161b;
+  font-size: 0.8rem;
+}
+
+.pre-disaster-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pre-disaster-name {
+  font-weight: 600;
+}
+
+.pre-disaster-detail {
+  color: #94a3b8;
+}
+
 .details-toggle {
   display: flex;
   align-items: center;
@@ -138,6 +171,81 @@ button:disabled {
 
 .recover-button:not(:disabled):hover {
   box-shadow: 0 0 32px rgba(59, 130, 246, 0.55);
+}
+
+.positions {
+  margin-top: 1.5rem;
+}
+
+.position-owed {
+  color: #4ade80;
+}
+
+.position-owing {
+  color: #f87171;
+}
+
+.recovery-timer {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: 1px solid #2a2e37;
+  background: #14161b;
+}
+
+.recovery-timer-label {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.recovery-timer-value {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.recovery-timer-frozen .recovery-timer-value {
+  color: #4ade80;
+}
+
+.ciphertext-panel {
+  margin-top: 1.5rem;
+}
+
+.ciphertext-compare {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.ciphertext-card {
+  flex: 1 1 300px;
+  border: 1px solid #2a2e37;
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  background: #14161b;
+  text-align: left;
+}
+
+.ciphertext-plaintext-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+}
+
+.ciphertext-hex {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #4ade80;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 .identity-compare {
