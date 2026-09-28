@@ -1,4 +1,16 @@
-import { Background, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
+import {
+  Background,
+  BaseEdge,
+  EdgeLabelRenderer,
+  Handle,
+  Position,
+  ReactFlow,
+  getBezierPath,
+  type Edge,
+  type EdgeProps,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
@@ -86,6 +98,52 @@ function NetworkNode({ data }: NodeProps<Node<NodeVisualData>>) {
 }
 
 const nodeTypes = { network: NetworkNode };
+
+// React Flow's built-in string `label` prop measures the text's SVG bbox to
+// size its background — when the label goes from absent to present (as this
+// one does, the moment identity is re-authorized) that measurement can be
+// stale, clipping the text (seen live: "same identity" rendered as "me
+// identity"). A plain positioned HTML div via EdgeLabelRenderer sizes itself
+// the normal CSS way instead, sidestepping that measurement entirely.
+function IdentityEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, style, data }: EdgeProps) {
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+  const label = (data as { label?: string } | undefined)?.label;
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={style} />
+      {label !== undefined && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              background: "#1e1030",
+              border: "1px solid #a855f7",
+              borderRadius: 4,
+              padding: "3px 8px",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "#c4b5fd",
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+            }}
+          >
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
+const edgeTypes = { identity: IdentityEdge };
 
 export interface RecoveryGraphProps {
   events: RecoverEvent[];
@@ -269,6 +327,7 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
     flowEdge("e-agent3", "agent3", custodianStatus.agent3 ?? "idle"),
     {
       id: "e-identity",
+      type: "identity",
       source: "participant1",
       target: "participant4",
       // Driven by the paced reveal (!finished), not the raw `recovering`
@@ -282,11 +341,7 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
         strokeWidth: identityTransferred ? 2.5 : 1,
         strokeDasharray: "6 4",
       },
-      label: identityTransferred ? "same identity" : undefined,
-      labelStyle: { fill: "#c4b5fd", fontSize: 11, fontWeight: 600 },
-      labelBgStyle: { fill: "#1e1030", stroke: "#a855f7", strokeWidth: 1 },
-      labelBgPadding: [6, 4] as [number, number],
-      labelBgBorderRadius: 4,
+      data: { label: identityTransferred ? "same identity" : undefined },
     },
   ];
 
@@ -296,6 +351,7 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         nodesDraggable={false}
