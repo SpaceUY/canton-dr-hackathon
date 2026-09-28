@@ -3,6 +3,7 @@ import { backup } from "./backup.js";
 import { checkCommitment } from "./checkCommitment.js";
 import { issueChallenge } from "./challenge.js";
 import { challengeLoop } from "./challengeLoop.js";
+import { counterpartyTx } from "./counterpartyTx.js";
 import { createPolicy, type CustodianRef } from "./createPolicy.js";
 import { startDashboard } from "./dashboard.js";
 import { distribute } from "./distribute.js";
@@ -28,6 +29,7 @@ function usage(): never {
       "--policy-id <id> --endpoints <url,url,...> --k <n>\n" +
       "  recover-identity --policy-id <id> --endpoints <url,url,...> --k <n> --custodian-participant <p> " +
       "--custodian <hint> [--key-path <path>]\n" +
+      "  counterparty-tx --as <custodian-hint> --participant <p> [--label <text>]\n" +
       "  create-policy  --owner-participant <p> --owner <hint> --custodian <participant:port:hint> [--custodian ...] " +
       "--k <n> --n <n> --frequency-hours <h> --policy-id <id>\n" +
       "  accept-custody --as <name> --participant <p> --custodian <hint> --owner-participant <p> --owner <hint> --policy-id <id>\n" +
@@ -168,6 +170,17 @@ async function main(): Promise<void> {
         policyId: flag(rest, "policy-id"),
         endpoints: endpointsFlag(rest),
         threshold: thresholdFlag(rest),
+      }),
+    );
+    return;
+  }
+
+  if (command === "counterparty-tx") {
+    console.log(
+      await counterpartyTx({
+        as: flag(rest, "as"),
+        participant: flag(rest, "participant"),
+        label: optionalFlag(rest, "label", "post-recovery-demo"),
       }),
     );
     return;
