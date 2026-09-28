@@ -2,14 +2,15 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { CustodianRef } from "./createPolicy.js";
 import { queryActive, resolveParty, type ActiveContract } from "./ledger.js";
 import { loadExternalPartyIdentity } from "./externalParty.js";
-import { recover, type RecoverStep } from "./recover.js";
+import { recover, type RecoverEvent } from "./recover.js";
 
 // One demo operator, one recovery at a time — a single shared slot is
 // enough. Reset at the start of every /recover call. Polled by the UI (see
-// ui/src/App.tsx) while a recovery is in flight, so the live demo shows the
-// three real steps landing instead of a single opaque spinner for the
-// ~30-90s a real re-authorization + restore can take.
-let recoverProgress: RecoverStep[] = [];
+// ui/src/RecoveryGraph.tsx) while a recovery is in flight, so the live demo
+// shows each custodian responding (or not) and the three real milestones
+// landing, instead of a single opaque spinner for the ~30-90s a real
+// re-authorization + restore can take.
+let recoverEvents: RecoverEvent[] = [];
 
 // Same identity seed.ts allocated `owner` under — used to know WHO owner is
 // (a local file read, no network, never affected by owner's own participant
@@ -135,7 +136,7 @@ async function handle(
     }
 
     if (req.method === "GET" && req.url === "/recover-progress") {
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ steps: recoverProgress }));
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ events: recoverEvents }));
       return;
     }
 
@@ -152,7 +153,7 @@ async function handle(
         return;
       }
 
-      recoverProgress = [];
+      recoverEvents = [];
       const result = await recover({
         targetParticipant: body.targetParticipant as string,
         targetLedgerApi: recoverTargetLedgerApi,
@@ -160,8 +161,8 @@ async function handle(
         policyId,
         endpoints: body.endpoints as string[],
         threshold: body.k as number,
-        onProgress: (step) => {
-          recoverProgress = [...recoverProgress, step];
+        onProgress: (event) => {
+          recoverEvents = [...recoverEvents, event];
         },
       });
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ result }));

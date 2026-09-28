@@ -18,6 +18,14 @@ const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der
 // has legitimate hosting rights before anything about the ACS happens.
 export type RecoverStep = "identity-reauthorized" | "key-reconstructed" | "state-restored";
 
+// Fine-grained enough to drive a live "which node is doing what" view, not
+// just three coarse milestones — one event per real network round trip to a
+// custodian, plus the three milestones above.
+export type RecoverEvent =
+  | { type: "custodian-query"; endpoint: string }
+  | { type: "custodian-response"; endpoint: string; ok: boolean }
+  | { type: "milestone"; step: RecoverStep };
+
 export interface RecoverOptions {
   targetParticipant: string;
   targetLedgerApi: string;
@@ -25,7 +33,7 @@ export interface RecoverOptions {
   policyId: string;
   endpoints: string[];
   threshold: number;
-  onProgress?: (step: RecoverStep) => void;
+  onProgress?: (event: RecoverEvent) => void;
 }
 
 export async function recover(options: RecoverOptions): Promise<string> {
@@ -45,7 +53,7 @@ export async function recover(options: RecoverOptions): Promise<string> {
       loaderParticipant,
       keyPath: owner.keyPath,
     });
-    onProgress?.("identity-reauthorized");
+    onProgress?.({ type: "milestone", step: "identity-reauthorized" });
 
     const blob = await fetchFirstAvailable(endpoints.map((e) => `${e}/custody/${policyId}/blob`));
     const encryptedPath = join(workDir, "acs.enc");
@@ -54,7 +62,9 @@ export async function recover(options: RecoverOptions): Promise<string> {
     const shares: Uint8Array[] = [];
     for (const endpoint of endpoints) {
       if (shares.length >= threshold) break;
+      onProgress?.({ type: "custodian-query", endpoint });
       const share = await fetchOptional(`${endpoint}/custody/${policyId}/share`);
+      onProgress?.({ type: "custodian-response", endpoint, ok: share !== undefined });
       if (share !== undefined) shares.push(share);
     }
     if (shares.length < threshold) {
@@ -64,10 +74,10 @@ export async function recover(options: RecoverOptions): Promise<string> {
     const key = await combine(shares);
     const acsPath = join(workDir, "acs.bin");
     await decryptFile(encryptedPath, acsPath, key);
-    onProgress?.("key-reconstructed");
+    onProgress?.({ type: "milestone", step: "key-reconstructed" });
 
     const restoreLine = await restore({ targetParticipant, inFile: acsPath });
-    onProgress?.("state-restored");
+    onProgress?.({ type: "milestone", step: "state-restored" });
     return `RECOVER_OK: reconstructed key from ${shares.length}/${endpoints.length} shares; ${rehostLine}; ${restoreLine}`;
   } finally {
     await rm(workDir, { recursive: true, force: true });

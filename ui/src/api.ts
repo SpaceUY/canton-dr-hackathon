@@ -49,9 +49,18 @@ export async function triggerRecover(req: RecoverRequest): Promise<string> {
 // as the narration might suggest.
 export type RecoverStep = "identity-reauthorized" | "key-reconstructed" | "state-restored";
 
-export async function fetchRecoverProgress(): Promise<RecoverStep[]> {
+// Mirrors agent/src/recover.ts's RecoverEvent exactly — one event per real
+// network round trip to a custodian, plus the three milestones. Nothing
+// here is invented client-side; every event corresponds to something the
+// backend actually did.
+export type RecoverEvent =
+  | { type: "custodian-query"; endpoint: string }
+  | { type: "custodian-response"; endpoint: string; ok: boolean }
+  | { type: "milestone"; step: RecoverStep };
+
+export async function fetchRecoverProgress(): Promise<RecoverEvent[]> {
   const res = await fetch(`${API_URL}/recover-progress`);
-  const body = (await res.json()) as { steps?: RecoverStep[] };
+  const body = (await res.json()) as { events?: RecoverEvent[] };
   if (!res.ok) return [];
-  return body.steps ?? [];
+  return body.events ?? [];
 }
