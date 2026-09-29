@@ -348,21 +348,24 @@ button:disabled {
 }
 
 /* Identity headline - the project's proof, stays prominent, never collapsed */
+/* Vertical stack (before, arrow/badge, after), not a horizontal row that
+   wraps unpredictably - the left column isn't wide enough to fit two
+   ~300px cards side by side once the graph is next to them, and a wrap
+   there looked accidental/off-center instead of deliberate. */
 .identity-compare {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1rem;
+  gap: 0.3rem;
   margin: 0;
-  flex-wrap: wrap;
 }
 
 .identity-card {
-  flex: 1 1 260px;
-  max-width: 340px;
+  width: 100%;
+  max-width: 320px;
   border: 1px solid #2a2e37;
   border-radius: 10px;
-  padding: 0.5rem 0.9rem;
+  padding: 0.4rem 0.9rem;
   background: #14161b;
   text-align: left;
 }
@@ -400,11 +403,13 @@ button:disabled {
 }
 
 .identity-compare-arrow {
-  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 90px;
+}
+
+.identity-compare-arrow .identity-compare-dash {
+  transform: rotate(90deg);
 }
 
 .identity-compare-dash {
