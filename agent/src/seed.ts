@@ -57,26 +57,32 @@ export async function seed(): Promise<string> {
   const seededLabels = new Set(existingPositions.map((c) => c.payload["label"]));
   const missing = POSITIONS.filter((p) => !seededLabels.has(p.label));
 
-  if (missing.length > 0) {
+  // One submission per position, not one batched call: Interactive
+  // Submission's /prepare rejects more than one command per request
+  // ("Preparing multiple commands is currently not supported") -
+  // discovered live, not documented anywhere obvious.
+  for (const p of missing) {
     await submitAsExternalParty(
       participant1,
       synchronizerId,
       owner.partyId,
       owner.keyPath,
-      missing.map((p) => ({
-        CreateCommand: {
-          templateId: "#canton-dr:Position:Position",
-          createArguments: {
-            owner: owner.partyId,
-            custodians: [custodian2, custodian3],
-            counterparty: p.counterparty,
-            amount: p.amount,
-            currency: p.currency,
-            label: p.label,
+      [
+        {
+          CreateCommand: {
+            templateId: "#canton-dr:Position:Position",
+            createArguments: {
+              owner: owner.partyId,
+              custodians: [custodian2, custodian3],
+              counterparty: p.counterparty,
+              amount: p.amount,
+              currency: p.currency,
+              label: p.label,
+            },
           },
         },
-      })),
-      "seed-positions-1",
+      ],
+      `seed-position-${p.label}`,
     );
   }
 

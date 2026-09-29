@@ -47,7 +47,12 @@ export async function runCantonScript(scriptBody: string): Promise<string> {
         if (code === 0) {
           resolve(stdout);
         } else {
-          reject(new Error(`canton run exited with code ${code}\n${stderr || stdout}`));
+          // Not `stderr || stdout`: canton always prints a harmless
+          // JAVA_HOME warning to stderr, so that made stderr non-empty on
+          // every run and silently discarded stdout — which is where the
+          // actual Scala compile/runtime error normally shows up. Include
+          // both, always.
+          reject(new Error(`canton run exited with code ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`));
         }
       });
     });
