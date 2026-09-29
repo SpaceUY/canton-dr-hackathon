@@ -20,6 +20,13 @@ export interface StatusView {
   custodians: CustodianView[];
 }
 
+export async function fetchParticipant1Alive(): Promise<boolean> {
+  const res = await fetch(`${API_URL}/participant1-status`);
+  if (!res.ok) return false;
+  const body = (await res.json()) as { alive?: boolean };
+  return body.alive ?? false;
+}
+
 export async function fetchStatus(): Promise<StatusView> {
   const res = await fetch(`${API_URL}/status`);
   const body = (await res.json()) as StatusView & { error?: string };

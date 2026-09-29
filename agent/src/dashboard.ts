@@ -154,6 +154,12 @@ async function handle(
       return;
     }
 
+    if (req.method === "GET" && req.url === "/participant1-status") {
+      const alive = await isParticipant1Alive();
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ alive }));
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/recover-progress") {
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ events: recoverEvents }));
       return;
@@ -234,6 +240,20 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 // participant to be alive" rule as getStatus below — Position is an
 // observer contract for every custodian equally, so the first one is
 // enough (no per-custodian filtering needed, unlike Challenge/etc).
+// Real reachability, not a hardcoded "dead from the start" — the UI's map
+// (ui/src/RecoveryGraph.tsx) is meant to be honest before the disaster too
+// (that's the whole point of retiring the separate pre-disaster strip in
+// favor of one always-visible map). The presenter kills participant1 from a
+// terminal, never from the UI (ADR-006) — this is how the screen finds out.
+async function isParticipant1Alive(): Promise<boolean> {
+  try {
+    const res = await fetch("http://participant1:5013/v2/parties/participant-id");
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function getPositions(statusCustodians: CustodianRef[]): Promise<PositionView[]> {
   if (statusCustodians.length === 0) throw new Error("no custodians configured for position queries");
   const first = statusCustodians[0];
