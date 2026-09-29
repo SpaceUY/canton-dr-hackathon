@@ -24,6 +24,18 @@ Developer: tomascmk
   seguidos), `recover` puede fallar con un timeout INTERNO de Canton, no un bug propio — probable
   explicación real detrás de fallas "misteriosas" pasadas que se atribuían sólo a Docker Desktop.
   Corrida final exitosa: 82s, 16 eventos de progreso reales (antes eran 7).
+- Rediseño completo de la UI a nivel dashboard de producto, a pedido del developer con referencia
+  concreta: layout fijo de dos columnas (franja de métricas arriba, mapa + botón + etapas nombradas
+  a la izquierda, prosa + posiciones + custodios a la derecha, detalles técnicos colapsados al pie).
+  El mapa ahora muestra a `participant1` vivo o muerto de verdad (nuevo endpoint
+  `/participant1-status`), no un estado fijo por guion. Dos correcciones de hecho del developer
+  antes de tocar código: son dos custodios reales, no tres (`agent1` es el respaldo propio, se
+  saltea a propósito), y el orden real de las etapas es identidad→clave→estado. Consecuencia
+  documentada: con k=2 y sólo 2 custodios reales, no hay tolerancia a que uno se caiga — no
+  prometer eso en el guion.
+- Verificado contra el ambiente real (varios resets, alguno con contención de CPU otra vez —
+  mismo hallazgo de ayer, se resuelve esperando). No se pudo probar en un navegador real esta
+  sesión tampoco.
 
 ---
 Date: 2026-09-28
