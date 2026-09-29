@@ -161,7 +161,9 @@ export function App() {
 
   return (
     <main className="app">
-      <h1>canton-dr</h1>
+      <h1>
+        SpaceDev <span className="h1-project">— canton-dr</span>
+      </h1>
 
       {loading && status === null && <p className="loading">Loading…</p>}
 
@@ -210,7 +212,10 @@ export function App() {
                     {recoverOutcome.summary}
                   </p>
                   {recoverOutcome.summary !== recoverOutcome.raw && (
-                    <pre className="recover-raw">{recoverOutcome.raw}</pre>
+                    <details className="recover-raw-details">
+                      <summary>Raw result</summary>
+                      <pre className="recover-raw">{recoverOutcome.raw}</pre>
+                    </details>
                   )}
                 </div>
               )}

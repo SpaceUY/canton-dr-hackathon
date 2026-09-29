@@ -378,7 +378,7 @@ export function RecoveryGraph({
 
   return (
     <div>
-      <div style={{ height: 400, background: "#09090b", borderRadius: 12, border: "1px solid #27272a" }}>
+      <div style={{ height: 250, background: "#09090b", borderRadius: 12, border: "1px solid #27272a" }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
