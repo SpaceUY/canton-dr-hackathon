@@ -16,6 +16,7 @@ import { respondRecovery } from "./respondRecovery.js";
 import { restore } from "./restore.js";
 import { seed } from "./seed.js";
 import { startServer } from "./server.js";
+import { verifyDemoState } from "./verifyDemoState.js";
 
 function usage(): never {
   console.error(
@@ -42,6 +43,7 @@ function usage(): never {
       "--policy-id <id> --request-id <id>\n" +
       "  respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>\n" +
       "  seed             (no args — allocates owner as an external party, seeds the demo Record)\n" +
+      "  verify-demo-state (no args — fails loudly if the environment isn't a genuine pre-disaster state)\n" +
       "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>\n" +
       "  dashboard        --port <port> --custodian <participant:port:hint> [--custodian ...] --policy-id <id> " +
       "--recover-target <participant> --recover-target-ledger-api <host:port> --recover-endpoints <url,url,...> " +
@@ -306,6 +308,11 @@ async function main(): Promise<void> {
 
   if (command === "seed") {
     console.log(await seed());
+    return;
+  }
+
+  if (command === "verify-demo-state") {
+    console.log(await verifyDemoState());
     return;
   }
 
