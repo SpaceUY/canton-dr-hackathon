@@ -126,7 +126,11 @@ function LabeledEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, t
           <div
             style={{
               position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              // Offset above the curve's own midpoint, not sitting on it -
+              // keeps the label clearly separated from the line itself
+              // (and from anything else near the curve's path) instead of
+              // relying on the line and the label never visually crossing.
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - 22}px)`,
               background: "#1e1030",
               border: "1px solid #a855f7",
               borderRadius: 4,
@@ -241,22 +245,9 @@ export function RecoveryGraph({
       draggable: false,
     },
     {
-      id: "agent1",
-      type: "network",
-      position: { x: 0, y: 130 },
-      data: {
-        label: "Owner's own backup",
-        techId: "agent1",
-        sublabel: "Skipped on purpose — rebuilt only from others' fragments",
-        status: "idle",
-        kind: "self-backup",
-      },
-      draggable: false,
-    },
-    {
       id: "agent2",
       type: "network",
-      position: { x: 0, y: 250 },
+      position: { x: 0, y: 140 },
       data: {
         label: "Custodian 2",
         techId: "agent2",
@@ -274,7 +265,7 @@ export function RecoveryGraph({
     {
       id: "agent3",
       type: "network",
-      position: { x: 0, y: 370 },
+      position: { x: 0, y: 280 },
       data: {
         label: "Custodian 3",
         techId: "agent3",
@@ -289,10 +280,28 @@ export function RecoveryGraph({
       },
       draggable: false,
     },
+    // Positioned below the two real custodians, off the direct
+    // participant1 -> participant4 path (it used to sit between them,
+    // which put the identity edge's line and label right behind this
+    // node's box — moved out of the way, which also reinforces the point:
+    // this one isn't part of the active recovery path).
+    {
+      id: "agent1",
+      type: "network",
+      position: { x: 0, y: 420 },
+      data: {
+        label: "Owner's own backup",
+        techId: "agent1",
+        sublabel: "Skipped on purpose — rebuilt only from others' fragments",
+        status: "idle",
+        kind: "self-backup",
+      },
+      draggable: false,
+    },
     {
       id: "participant4",
       type: "network",
-      position: { x: 520, y: 185 },
+      position: { x: 600, y: 140 },
       data: {
         label: "Recovery target",
         techId: "participant4",

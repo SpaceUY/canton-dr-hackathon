@@ -122,16 +122,27 @@ println("REHOST_PROPOSE_OK")
     const { signatureB64, fingerprint } = await signTopologyHash(hashB64, keyPath, partyId);
     onProgress?.({ type: "rehost-substep", step: "signed" });
 
-    // Loaded via a different, still-connected console — `target` disconnected
-    // itself above, and a disconnected participant has no live view of its
-    // own topology store to load a transaction into (see FINDINGS.md,
-    // TOPOLOGY_STORE_NOT_FOUND).
-    const loadScript = `
+    // Load + verify (reconnect target, clear onboarding) in ONE script, not
+    // two: each runCantonScript call pays for a fresh JVM console startup,
+    // which live-tested added enough real wall-clock time to push a full
+    // recovery close to 2 minutes for no narrative benefit — the "loaded"
+    // and "verifying"/"verified" events below still fire as their own real
+    // steps, just without a second JVM spin-up between them. `loader` (a
+    // different, still-connected console) does the load — `target`
+    // disconnected itself above, and a disconnected participant has no live
+    // view of its own topology store to load a transaction into (see
+    // FINDINGS.md, TOPOLOGY_STORE_NOT_FOUND) — but the SAME script can still
+    // reference `target` directly afterward for the reconnect + onboarding
+    // check, since both are just remote admin-API handles, not a
+    // stateful session tied to one script invocation.
+    const loadAndVerifyScript = `
 import com.digitalasset.canton.topology.transaction.SignedTopologyTransaction
 import com.digitalasset.canton.crypto.{Signature, SignatureFormat, SigningAlgorithmSpec, Fingerprint}
 import java.nio.file.{Files, Paths}
 
+val partyId = PartyId.tryFromProtoPrimitive("${partyId}")
 val loader = ${loaderParticipant}
+val target = ${targetParticipant}
 val synchronizerId = loader.synchronizers.id_of("${synchronizerAlias}")
 
 val bytes = Files.readAllBytes(Paths.get("${proposalPath}"))
@@ -153,21 +164,6 @@ loader.topology.transactions.load(
   store = synchronizerId,
 )
 println("REHOST_LOAD_OK")
-`.trim();
-
-    onProgress?.({ type: "rehost-substep", step: "loading", detail: `loading the signed transaction via ${loaderParticipant}` });
-    const loadStdout = await runCantonScript(loadScript);
-    if (!loadStdout.includes("REHOST_LOAD_OK")) {
-      throw new Error(`rehost load step did not confirm success:\n${loadStdout}`);
-    }
-    onProgress?.({ type: "rehost-substep", step: "loaded" });
-
-    // Separate from the load step so its own real duration (reconnect can
-    // take a few seconds; onboarding-flag clearing is fire-and-forget, see
-    // below) is reported as its own phase, not folded silently into "loading".
-    const verifyScript = `
-val partyId = PartyId.tryFromProtoPrimitive("${partyId}")
-val target = ${targetParticipant}
 
 target.synchronizers.modify("${synchronizerAlias}", _.copy(manualConnect = false))
 
@@ -200,12 +196,15 @@ println(s"REHOST_ONBOARDING_STATUS: $onboardingStatus")
 println("REHOST_VERIFY_OK")
 `.trim();
 
-    onProgress?.({ type: "rehost-substep", step: "verifying", detail: `reconnecting ${targetParticipant} and checking submission readiness` });
-    const verifyStdout = await runCantonScript(verifyScript);
-    if (!verifyStdout.includes("REHOST_VERIFY_OK")) {
-      throw new Error(`rehost verify step did not confirm success:\n${verifyStdout}`);
+    onProgress?.({ type: "rehost-substep", step: "loading", detail: `loading the signed transaction via ${loaderParticipant}` });
+    const loadStdout = await runCantonScript(loadAndVerifyScript);
+    if (!loadStdout.includes("REHOST_LOAD_OK") || !loadStdout.includes("REHOST_VERIFY_OK")) {
+      throw new Error(`rehost load/verify step did not confirm success:\n${loadStdout}`);
     }
-    const onboardingPending = verifyStdout.includes("FlagSet");
+    onProgress?.({ type: "rehost-substep", step: "loaded" });
+
+    onProgress?.({ type: "rehost-substep", step: "verifying", detail: `reconnecting ${targetParticipant} and checking submission readiness` });
+    const onboardingPending = loadStdout.includes("FlagSet");
     onProgress?.({
       type: "rehost-substep",
       step: "verified",
