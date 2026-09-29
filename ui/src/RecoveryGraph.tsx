@@ -14,7 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import type { RecoverEvent } from "./api";
+import type { RecoverEvent, RehostSubStep } from "./api";
 
 // Every state below is derived from real backend events (agent/src/recover.ts's
 // RecoverEvent, via GET /recover-progress) — nothing here is a fake timer.
@@ -152,6 +152,19 @@ export interface RecoveryGraphProps {
   failed: boolean;
 }
 
+const SUBSTEP_LABEL: Record<RehostSubStep, string> = {
+  "checking-idempotency": "Checking if already hosted…",
+  "already-hosted": "Already hosted — nothing to re-authorize",
+  proposing: "Proposing identity change…",
+  proposed: "Proposal signed by target",
+  signing: "Signing with owner's key…",
+  signed: "Signature ready",
+  loading: "Loading authorization…",
+  loaded: "Authorization loaded",
+  verifying: "Verifying submission rights…",
+  verified: "Identity verified",
+};
+
 function endpointNodeId(endpoint: string): string {
   try {
     return new URL(endpoint).hostname;
@@ -199,11 +212,21 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
     [revealed],
   );
 
+  // Real phases of re-authorizing identity (propose/sign/load/verify),
+  // each reported by agent/src/rehostParty.ts as it actually happens - not
+  // a single "done" event at the end of a ~55s black box. The latest one
+  // drives both the target node's sublabel and the identity edge's label
+  // while the milestone hasn't landed yet.
+  const latestRehostSubstep = useMemo(() => {
+    const events = revealed.filter((e) => e.type === "rehost-substep");
+    return events.length > 0 ? events[events.length - 1] : undefined;
+  }, [revealed]);
+
   const targetStatus: NodeStatus = succeeded && finished
     ? "recovered"
     : failed && finished
       ? "no-response"
-      : milestones.size > 0
+      : milestones.size > 0 || latestRehostSubstep !== undefined
         ? "querying"
         : "idle";
 
@@ -217,9 +240,11 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
           ? "Key reconstructed — importing state…"
           : milestones.has("identity-reauthorized")
             ? "Identity re-authorized — fetching fragments…"
-            : recovering
-              ? "Awaiting recovery…"
-              : "Empty — awaiting recovery";
+            : latestRehostSubstep !== undefined
+              ? SUBSTEP_LABEL[latestRehostSubstep.step]
+              : recovering
+                ? "Awaiting recovery…"
+                : "Empty — awaiting recovery";
 
   const identityTransferred = milestones.has("identity-reauthorized");
 
@@ -341,7 +366,13 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
         strokeWidth: identityTransferred ? 2.5 : 1,
         strokeDasharray: "6 4",
       },
-      data: { label: identityTransferred ? "same identity" : undefined },
+      data: {
+        label: identityTransferred
+          ? "same identity"
+          : latestRehostSubstep !== undefined
+            ? SUBSTEP_LABEL[latestRehostSubstep.step]
+            : undefined,
+      },
     },
   ];
 

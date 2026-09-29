@@ -76,13 +76,32 @@ export async function triggerRecover(req: RecoverRequest): Promise<string> {
 // as the narration might suggest.
 export type RecoverStep = "identity-reauthorized" | "key-reconstructed" | "state-restored";
 
+// Mirrors agent/src/rehostParty.ts's RehostSubStep exactly — real phases of
+// re-authorizing identity on the target (propose/sign/load/verify), each
+// reported when it actually happens. Added 2026-09-29: a single milestone
+// at the end of this whole phase left the recovery graph looking dead for
+// most of a real recovery's wall-clock time.
+export type RehostSubStep =
+  | "checking-idempotency"
+  | "already-hosted"
+  | "proposing"
+  | "proposed"
+  | "signing"
+  | "signed"
+  | "loading"
+  | "loaded"
+  | "verifying"
+  | "verified";
+
 // Mirrors agent/src/recover.ts's RecoverEvent exactly — one event per real
-// network round trip to a custodian, plus the three milestones. Nothing
-// here is invented client-side; every event corresponds to something the
-// backend actually did.
+// network round trip to a custodian, one per real identity-reauthorization
+// sub-phase, plus the three milestones. Nothing here is invented
+// client-side; every event corresponds to something the backend actually
+// did.
 export type RecoverEvent =
   | { type: "custodian-query"; endpoint: string }
   | { type: "custodian-response"; endpoint: string; ok: boolean }
+  | { type: "rehost-substep"; step: RehostSubStep; detail?: string }
   | { type: "milestone"; step: RecoverStep };
 
 export async function fetchRecoverProgress(): Promise<RecoverEvent[]> {

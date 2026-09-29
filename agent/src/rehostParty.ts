@@ -5,6 +5,30 @@ import { assertSafeIdentifier, runCantonScript } from "./canton.js";
 import { signTopologyHash } from "./externalParty.js";
 import { isPartyHostedLocally } from "./ledger.js";
 
+// Real sub-phases of re-authorizing identity on the target, each reported
+// when it actually happens - not one opaque await covering all of them.
+// A single "identity re-authorized" milestone at the end left the UI's
+// recovery graph looking dead for the ~55s this whole thing can take
+// (live-tested 2026-09-29): four distinct things advancing beats one
+// frozen bar, even if any one of them is still slow on its own.
+export type RehostSubStep =
+  | "checking-idempotency"
+  | "already-hosted"
+  | "proposing"
+  | "proposed"
+  | "signing"
+  | "signed"
+  | "loading"
+  | "loaded"
+  | "verifying"
+  | "verified";
+
+export interface RehostEvent {
+  type: "rehost-substep";
+  step: RehostSubStep;
+  detail?: string;
+}
+
 export interface RehostPartyOptions {
   partyId: string;
   targetParticipant: string; // console name, e.g. "participant4"
@@ -12,6 +36,7 @@ export interface RehostPartyOptions {
   loaderParticipant: string; // any other live, connected console, e.g. "participant2"
   keyPath: string;
   synchronizerAlias?: string;
+  onProgress?: (event: RehostEvent) => void;
 }
 
 // Authorizes `targetParticipant` to host an already-existing external party
@@ -22,15 +47,18 @@ export interface RehostPartyOptions {
 // a party the target doesn't already know about — without this step the
 // target has no business accepting that party's contracts at all.
 export async function rehostParty(options: RehostPartyOptions): Promise<string> {
-  const { partyId, targetParticipant, targetLedgerApi, loaderParticipant, keyPath } = options;
+  const { partyId, targetParticipant, targetLedgerApi, loaderParticipant, keyPath, onProgress } = options;
   const synchronizerAlias = options.synchronizerAlias ?? "da";
   assertSafeIdentifier(targetParticipant, "targetParticipant");
   assertSafeIdentifier(loaderParticipant, "loaderParticipant");
+
+  onProgress?.({ type: "rehost-substep", step: "checking-idempotency" });
 
   // Idempotency: propose_delta's requiresPartyToBeOnboarded=true asserts the
   // party ISN'T already hosted on the target — re-running this against an
   // already-completed rehost isn't just a harmless no-op, it breaks loudly.
   if (await isPartyHostedLocally(targetLedgerApi, partyId)) {
+    onProgress?.({ type: "rehost-substep", step: "already-hosted" });
     return `REHOST_OK: ${partyId} already hosted on ${targetParticipant} — skipped`;
   }
 
@@ -80,6 +108,7 @@ target.synchronizers.modify("${synchronizerAlias}", _.copy(manualConnect = true)
 println("REHOST_PROPOSE_OK")
 `.trim();
 
+    onProgress?.({ type: "rehost-substep", step: "proposing", detail: `proposing on ${targetParticipant}` });
     const proposeStdout = await runCantonScript(proposeScript);
     const hashLine = proposeStdout.split("\n").find((l) => l.includes("REHOST_PROPOSAL_HASH_B64:"));
     if (hashLine === undefined) {
@@ -87,22 +116,22 @@ println("REHOST_PROPOSE_OK")
     }
     const hashB64 = hashLine.split(":")[1];
     if (hashB64 === undefined) throw new Error(`could not parse proposal hash from: ${hashLine}`);
+    onProgress?.({ type: "rehost-substep", step: "proposed" });
 
+    onProgress?.({ type: "rehost-substep", step: "signing", detail: "signing with owner's external key" });
     const { signatureB64, fingerprint } = await signTopologyHash(hashB64, keyPath, partyId);
+    onProgress?.({ type: "rehost-substep", step: "signed" });
 
     // Loaded via a different, still-connected console — `target` disconnected
     // itself above, and a disconnected participant has no live view of its
     // own topology store to load a transaction into (see FINDINGS.md,
-    // TOPOLOGY_STORE_NOT_FOUND). Reverting manualConnect here too, so this
-    // step doesn't leave a permanent side effect on the target beyond the
-    // disaster-recovery window itself.
+    // TOPOLOGY_STORE_NOT_FOUND).
     const loadScript = `
 import com.digitalasset.canton.topology.transaction.SignedTopologyTransaction
 import com.digitalasset.canton.crypto.{Signature, SignatureFormat, SigningAlgorithmSpec, Fingerprint}
 import java.nio.file.{Files, Paths}
 
 val loader = ${loaderParticipant}
-val target = ${targetParticipant}
 val synchronizerId = loader.synchronizers.id_of("${synchronizerAlias}")
 
 val bytes = Files.readAllBytes(Paths.get("${proposalPath}"))
@@ -123,6 +152,22 @@ loader.topology.transactions.load(
   transactions = Seq(proposal.addSingleSignature(partySignature)),
   store = synchronizerId,
 )
+println("REHOST_LOAD_OK")
+`.trim();
+
+    onProgress?.({ type: "rehost-substep", step: "loading", detail: `loading the signed transaction via ${loaderParticipant}` });
+    const loadStdout = await runCantonScript(loadScript);
+    if (!loadStdout.includes("REHOST_LOAD_OK")) {
+      throw new Error(`rehost load step did not confirm success:\n${loadStdout}`);
+    }
+    onProgress?.({ type: "rehost-substep", step: "loaded" });
+
+    // Separate from the load step so its own real duration (reconnect can
+    // take a few seconds; onboarding-flag clearing is fire-and-forget, see
+    // below) is reported as its own phase, not folded silently into "loading".
+    const verifyScript = `
+val partyId = PartyId.tryFromProtoPrimitive("${partyId}")
+val target = ${targetParticipant}
 
 target.synchronizers.modify("${synchronizerAlias}", _.copy(manualConnect = false))
 
@@ -147,24 +192,27 @@ while (!target.synchronizers.is_connected("${synchronizerAlias}") && reconnectAt
 // Fire-and-forget, NOT retried in a loop here: Canton's own doc says this
 // call "records the clearance operation as pending, ensuring it can
 // automatically resume" on its own in the background - a synchronous
-// retry loop here blocks BEFORE recover.ts's first progress event ever
-// fires, which live-tested left the UI's recovery graph looking
-// completely dead for ~90s before all 7 events landed in a single burst
-// at the very end. Recovery's own visible progress matters more than
-// having submission-readiness confirmed synchronously - Canton finishes
-// the job on its own shortly after.
-val partyIdForClear = PartyId.tryFromProtoPrimitive("${partyId}")
+// retry loop here blocks the whole recovery, live-tested at +50s of dead
+// time. Canton finishes the job on its own shortly after.
 val clearSynchronizerId = target.synchronizers.id_of("${synchronizerAlias}")
-val onboardingStatus = target.parties.clear_party_onboarding_flag(partyIdForClear, clearSynchronizerId, 1L, None)
+val onboardingStatus = target.parties.clear_party_onboarding_flag(partyId, clearSynchronizerId, 1L, None)
 println(s"REHOST_ONBOARDING_STATUS: $onboardingStatus")
-
-println("REHOST_LOAD_OK")
+println("REHOST_VERIFY_OK")
 `.trim();
 
-    const loadStdout = await runCantonScript(loadScript);
-    if (!loadStdout.includes("REHOST_LOAD_OK")) {
-      throw new Error(`rehost load step did not confirm success:\n${loadStdout}`);
+    onProgress?.({ type: "rehost-substep", step: "verifying", detail: `reconnecting ${targetParticipant} and checking submission readiness` });
+    const verifyStdout = await runCantonScript(verifyScript);
+    if (!verifyStdout.includes("REHOST_VERIFY_OK")) {
+      throw new Error(`rehost verify step did not confirm success:\n${verifyStdout}`);
     }
+    const onboardingPending = verifyStdout.includes("FlagSet");
+    onProgress?.({
+      type: "rehost-substep",
+      step: "verified",
+      detail: onboardingPending
+        ? "submission rights still finalizing in the background"
+        : "ready to submit its own commands",
+    });
 
     return `REHOST_OK: ${partyId} authorized to host on ${targetParticipant} (loaded via ${loaderParticipant})`;
   } finally {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { combine } from "shamir-secret-sharing";
 import { decryptFile } from "./crypto.js";
 import { loadExternalPartyIdentity } from "./externalParty.js";
-import { rehostParty } from "./rehostParty.js";
+import { rehostParty, type RehostEvent } from "./rehostParty.js";
 import { restore } from "./restore.js";
 
 // Same identity seed.ts allocated `owner` under. Loaded from disk, not
@@ -24,6 +24,7 @@ export type RecoverStep = "identity-reauthorized" | "key-reconstructed" | "state
 export type RecoverEvent =
   | { type: "custodian-query"; endpoint: string }
   | { type: "custodian-response"; endpoint: string; ok: boolean }
+  | RehostEvent
   | { type: "milestone"; step: RecoverStep };
 
 export interface RecoverOptions {
@@ -52,6 +53,7 @@ export async function recover(options: RecoverOptions): Promise<string> {
       targetLedgerApi,
       loaderParticipant,
       keyPath: owner.keyPath,
+      onProgress,
     });
     onProgress?.({ type: "milestone", step: "identity-reauthorized" });
 
