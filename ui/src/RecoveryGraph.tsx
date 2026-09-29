@@ -13,27 +13,29 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import type { RecoverEvent, RehostSubStep } from "./api";
+import { useMemo } from "react";
+import type { RecoverEvent } from "./api";
+import { SUBSTEP_LABEL } from "./labels";
 
-// Every state below is derived from real backend events (agent/src/recover.ts's
-// RecoverEvent, via GET /recover-progress) — nothing here is a fake timer.
-// The only thing NOT derived from an event is participant1: it's shown dead
-// from the start, because by the time this screen matters in the real demo,
-// it already has been (see docs/DEMO_SCRIPT_SKELETON.md's opening beat).
+// Every state below is derived from real backend data: recover events (via
+// GET /recover-progress) and participant1's real reachability (via GET
+// /participant1-status, polled by App.tsx) — nothing here is a fake timer
+// or a hardcoded "already dead". The map is meant to be honest before the
+// disaster too, not just during recovery.
 
-type NodeStatus = "idle" | "dead" | "querying" | "responded" | "no-response" | "recovered";
+type NodeStatus = "idle" | "alive" | "dead" | "querying" | "responded" | "no-response" | "recovered";
 
 interface NodeVisualData extends Record<string, unknown> {
   label: string;
   techId: string;
   sublabel: string;
   status: NodeStatus;
-  kind: "owner-home" | "custodian" | "target";
+  kind: "owner-home" | "self-backup" | "custodian" | "target";
 }
 
 const STATUS_STYLE: Record<NodeStatus, { border: string; glow: string; bg: string }> = {
   idle: { border: "#3f3f46", glow: "none", bg: "#18181b" },
+  alive: { border: "#3f6212", glow: "0 0 10px rgba(101,163,13,0.25)", bg: "#141a0f" },
   dead: { border: "#7f1d1d", glow: "none", bg: "#1c1010" },
   querying: { border: "#ca8a04", glow: "0 0 16px rgba(202,138,4,0.55)", bg: "#1c1a10" },
   responded: { border: "#16a34a", glow: "0 0 14px rgba(22,163,74,0.45)", bg: "#0f1c14" },
@@ -43,6 +45,7 @@ const STATUS_STYLE: Record<NodeStatus, { border: string; glow: string; bg: strin
 
 const STATUS_ICON: Record<NodeStatus, string> = {
   idle: "⚪",
+  alive: "🟢",
   dead: "💀",
   querying: "🔄",
   responded: "✅",
@@ -105,7 +108,7 @@ const nodeTypes = { network: NetworkNode };
 // stale, clipping the text (seen live: "same identity" rendered as "me
 // identity"). A plain positioned HTML div via EdgeLabelRenderer sizes itself
 // the normal CSS way instead, sidestepping that measurement entirely.
-function IdentityEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, style, data }: EdgeProps) {
+function LabeledEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, style, data }: EdgeProps) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -143,27 +146,16 @@ function IdentityEdge({ id, sourceX, sourceY, sourcePosition, targetX, targetY, 
   );
 }
 
-const edgeTypes = { identity: IdentityEdge };
+const edgeTypes = { labeled: LabeledEdge };
 
 export interface RecoveryGraphProps {
-  events: RecoverEvent[];
+  revealed: RecoverEvent[];
+  finished: boolean;
   recovering: boolean;
   succeeded: boolean;
   failed: boolean;
+  participant1Alive: boolean;
 }
-
-const SUBSTEP_LABEL: Record<RehostSubStep, string> = {
-  "checking-idempotency": "Checking if already hosted…",
-  "already-hosted": "Already hosted — nothing to re-authorize",
-  proposing: "Proposing identity change…",
-  proposed: "Proposal signed by target",
-  signing: "Signing with owner's key…",
-  signed: "Signature ready",
-  loading: "Loading authorization…",
-  loaded: "Authorization loaded",
-  verifying: "Verifying submission rights…",
-  verified: "Identity verified",
-};
 
 function endpointNodeId(endpoint: string): string {
   try {
@@ -173,28 +165,14 @@ function endpointNodeId(endpoint: string): string {
   }
 }
 
-export function RecoveryGraph({ events, recovering, succeeded, failed }: RecoveryGraphProps) {
-  // Every event here genuinely happened — but the backend can report several
-  // in one poll tick (or all of them, if a step was already-satisfied and
-  // instant, e.g. re-hosting a party that's already hosted). Revealing them
-  // no faster than one every ~450ms doesn't fabricate anything: it just
-  // paces a real sequence enough for a human to actually see each step,
-  // instead of the graph jumping straight to "recovered" in one frame.
-  const [revealedCount, setRevealedCount] = useState(0);
-
-  useEffect(() => {
-    if (events.length === 0) {
-      setRevealedCount(0);
-      return;
-    }
-    if (revealedCount >= events.length) return;
-    const id = setTimeout(() => setRevealedCount((n) => n + 1), 450);
-    return () => clearTimeout(id);
-  }, [events.length, revealedCount]);
-
-  const revealed = events.slice(0, revealedCount);
-  const finished = revealedCount >= events.length;
-
+export function RecoveryGraph({
+  revealed,
+  finished,
+  recovering,
+  succeeded,
+  failed,
+  participant1Alive,
+}: RecoveryGraphProps) {
   const custodianStatus = useMemo(() => {
     const status: Record<string, NodeStatus> = { agent2: "idle", agent3: "idle" };
     for (const event of revealed) {
@@ -256,8 +234,8 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       data: {
         label: "Owner's node",
         techId: "participant1",
-        sublabel: "Destroyed",
-        status: "dead",
+        sublabel: participant1Alive ? "Live — holds identity + data" : "Destroyed",
+        status: participant1Alive ? "alive" : "dead",
         kind: "owner-home",
       },
       draggable: false,
@@ -269,9 +247,9 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       data: {
         label: "Owner's own backup",
         techId: "agent1",
-        sublabel: "Not needed — 2 external fragments are enough",
+        sublabel: "Skipped on purpose — rebuilt only from others' fragments",
         status: "idle",
-        kind: "custodian",
+        kind: "self-backup",
       },
       draggable: false,
     },
@@ -314,7 +292,7 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
     {
       id: "participant4",
       type: "network",
-      position: { x: 480, y: 185 },
+      position: { x: 520, y: 185 },
       data: {
         label: "Recovery target",
         techId: "participant4",
@@ -326,7 +304,7 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
     },
   ];
 
-  const flowEdge = (id: string, source: string, status: NodeStatus): Edge => {
+  const queryEdge = (id: string, source: string, status: NodeStatus): Edge => {
     const active = status === "querying";
     const done = status === "responded";
     return {
@@ -341,18 +319,32 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
     };
   };
 
+  // Structural facts, not live actions - always drawn, quiet/muted so the
+  // live query edges below still win the eye (see the legend under the
+  // graph). Both originate from participant1: that's where the whole blob
+  // and the whole key lived before distribution.
+  const structuralEdge = (id: string, target: string, kind: "blob" | "key"): Edge => ({
+    id,
+    source: "participant1",
+    target,
+    style:
+      kind === "blob"
+        ? { stroke: "#3b4252", strokeWidth: 1, strokeDasharray: "2 4" }
+        : { stroke: "#4a3f2a", strokeWidth: 1, strokeDasharray: "1 3 5 3" },
+  });
+
   const edges: Edge[] = [
-    {
-      id: "e-agent1",
-      source: "agent1",
-      target: "participant4",
-      style: { stroke: "#27272a", strokeWidth: 1, strokeDasharray: "4 4" },
-    },
-    flowEdge("e-agent2", "agent2", custodianStatus.agent2 ?? "idle"),
-    flowEdge("e-agent3", "agent3", custodianStatus.agent3 ?? "idle"),
+    structuralEdge("e-blob-agent1", "agent1", "blob"),
+    structuralEdge("e-blob-agent2", "agent2", "blob"),
+    structuralEdge("e-blob-agent3", "agent3", "blob"),
+    structuralEdge("e-key-agent1", "agent1", "key"),
+    structuralEdge("e-key-agent2", "agent2", "key"),
+    structuralEdge("e-key-agent3", "agent3", "key"),
+    queryEdge("e-agent2-query", "agent2", custodianStatus.agent2 ?? "idle"),
+    queryEdge("e-agent3-query", "agent3", custodianStatus.agent3 ?? "idle"),
     {
       id: "e-identity",
-      type: "identity",
+      type: "labeled",
       source: "participant1",
       target: "participant4",
       // Driven by the paced reveal (!finished), not the raw `recovering`
@@ -362,9 +354,8 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
       // riding out the same pacing every other node already follows.
       animated: !identityTransferred && !finished,
       style: {
-        stroke: identityTransferred ? "#a855f7" : "#3f3f46",
-        strokeWidth: identityTransferred ? 2.5 : 1,
-        strokeDasharray: "6 4",
+        stroke: identityTransferred ? "#a855f7" : "#52525b",
+        strokeWidth: identityTransferred ? 2.5 : 1.5,
       },
       data: {
         label: identityTransferred
@@ -377,21 +368,34 @@ export function RecoveryGraph({ events, recovering, succeeded, failed }: Recover
   ];
 
   return (
-    <div style={{ height: 420, background: "#09090b", borderRadius: 12, border: "1px solid #27272a" }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background color="#27272a" gap={24} />
-      </ReactFlow>
+    <div>
+      <div style={{ height: 400, background: "#09090b", borderRadius: 12, border: "1px solid #27272a" }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="#27272a" gap={24} />
+        </ReactFlow>
+      </div>
+      <div className="graph-legend">
+        <span>
+          <i className="legend-swatch legend-solid" /> who can act (identity)
+        </span>
+        <span>
+          <i className="legend-swatch legend-dotted" /> where the encrypted blob lives
+        </span>
+        <span>
+          <i className="legend-swatch legend-dashdot" /> where key fragments live
+        </span>
+      </div>
     </div>
   );
 }

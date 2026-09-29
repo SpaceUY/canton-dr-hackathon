@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   fetchCiphertext,
+  fetchParticipant1Alive,
   fetchPositions,
   fetchRecoverProgress,
   fetchStatus,
   triggerRecover,
   type CiphertextSample,
-  type CustodianStatus,
   type PositionView,
   type RecoverEvent,
   type StatusView,
 } from "./api";
-import { CiphertextPanel } from "./CiphertextPanel";
+import { CustodianList } from "./CustodianList";
 import { IdentityCompare } from "./IdentityCompare";
+import { MetricsStrip } from "./MetricsStrip";
 import { Positions } from "./Positions";
-import { PreDisasterStrip } from "./PreDisasterStrip";
+import { ProseExplainer } from "./ProseExplainer";
 import { RecoveryGraph } from "./RecoveryGraph";
-import { RecoveryTimer } from "./RecoveryTimer";
+import { StageRail } from "./StageRail";
+import { TechnicalDetails } from "./TechnicalDetails";
+import { usePacedEvents } from "./usePacedEvents";
 
 // Hardcoded to this project's own demo topology (see infra/docker-compose.yml)
 // — a minimal UI, not a general-purpose admin tool.
@@ -31,17 +33,6 @@ const RECOVER_TARGET = "participant4";
 const RECOVER_ENDPOINTS = ["http://agent2:4002", "http://agent3:4003"];
 const RECOVER_K = 2;
 
-const STATUS_LABEL: Record<CustodianStatus, string> = {
-  "no-custody-accepted": "Custody not accepted",
-  "awaiting-response": "Awaiting response",
-  ok: "OK",
-  "no-challenge-yet": "No challenge yet",
-};
-
-function shortHash(hash: string): string {
-  return `${hash.slice(0, 12)}…`;
-}
-
 // recover.ts's own return shape: "RECOVER_OK: reconstructed key from X/Y
 // shares; REHOST_OK: ...; RESTORE_OK: <path> imported into <target>". Y
 // there is endpoints.length — how many custodians this particular recovery
@@ -49,7 +40,7 @@ function shortHash(hash: string): string {
 // the owner's own share, to prove the threshold — see RECOVER_ENDPOINTS
 // above), not the scheme's real total. Use the policy's own `n` for the
 // human summary instead, so it doesn't contradict the "2 of 3" already shown
-// above the button. The REHOST_OK segment (added when identity recovery
+// in the metrics strip. The REHOST_OK segment (added when identity recovery
 // landed) isn't surfaced separately here — its content (re-hosted vs.
 // already-hosted) doesn't change what the user needs to know, just that it
 // happened; skip over it rather than parse its two variants. Best-effort —
@@ -75,6 +66,7 @@ export function App() {
   const [status, setStatus] = useState<StatusView | null>(null);
   const [positions, setPositions] = useState<PositionView[]>([]);
   const [ciphertext, setCiphertext] = useState<CiphertextSample | null>(null);
+  const [participant1Alive, setParticipant1Alive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [recovering, setRecovering] = useState(false);
@@ -82,11 +74,9 @@ export function App() {
   const [recoverProgress, setRecoverProgress] = useState<RecoverEvent[]>([]);
   const [recoverStartedAt, setRecoverStartedAt] = useState<number | null>(null);
   const [recoverEndedAt, setRecoverEndedAt] = useState<number | null>(null);
-  // Collapsed automatically once a recovery starts, so the graph is the only
-  // thing competing for attention — reopen it manually afterward if you want
-  // to check the policy/custodian details again.
-  const [detailsOpen, setDetailsOpen] = useState(true);
   const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { revealed, finished } = usePacedEvents(recoverProgress);
 
   const load = useCallback(() => {
     fetchStatus()
@@ -109,6 +99,16 @@ export function App() {
     void fetchCiphertext().then(setCiphertext);
   }, []);
 
+  // Real reachability, polled independently of /status (which queries via
+  // custodians on purpose and would never notice participant1 dying) - this
+  // is what lets the map be honest before the disaster, not just during it.
+  useEffect(() => {
+    const check = () => void fetchParticipant1Alive().then(setParticipant1Alive);
+    check();
+    const id = setInterval(check, 3000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (progressPollRef.current !== null) clearInterval(progressPollRef.current);
@@ -120,7 +120,6 @@ export function App() {
     setRecovering(true);
     setRecoverOutcome(null);
     setRecoverProgress([]);
-    setDetailsOpen(false);
     setRecoverStartedAt(Date.now());
     setRecoverEndedAt(null);
     // Real progress from the backend (agent/src/recover.ts calls onProgress
@@ -130,10 +129,9 @@ export function App() {
     // under one polling interval (e.g. re-hosting an already-hosted party is
     // near-instant) — if the POST /recover promise resolves before the
     // first scheduled poll ever fires, recoverProgress stays empty for the
-    // whole thing and the graph shows nothing but the identity edge (which
-    // animates off `recovering` alone, not a real event). Poll immediately
-    // on start, and once more right after the request settles, so the full
-    // event list is captured even when the operation is nearly instant.
+    // whole thing. Poll immediately on start, and once more right after the
+    // request settles, so the full event list is captured even when the
+    // operation is nearly instant.
     void fetchRecoverProgress().then(setRecoverProgress);
     progressPollRef.current = setInterval(() => {
       void fetchRecoverProgress().then(setRecoverProgress);
@@ -158,6 +156,9 @@ export function App() {
     }
   };
 
+  const succeeded = recoverOutcome?.kind === "success";
+  const failed = recoverOutcome?.kind === "error";
+
   return (
     <main className="app">
       <h1>canton-dr</h1>
@@ -175,113 +176,54 @@ export function App() {
 
       {status !== null && (
         <>
-          <PreDisasterStrip custodians={status.custodians} />
+          <MetricsStrip
+            k={status.k}
+            n={status.n}
+            custodians={status.custodians}
+            positions={positions}
+            timer={{ startedAt: recoverStartedAt, endedAt: recoverEndedAt }}
+          />
 
-          <button
-            type="button"
-            className="details-toggle"
-            onClick={() => setDetailsOpen((v) => !v)}
-            aria-expanded={detailsOpen}
-          >
-            <span className={`chevron ${detailsOpen ? "chevron-open" : ""}`}>▸</span>
-            Policy &amp; custodians
-          </button>
+          <div className="dashboard-columns">
+            <section className="dashboard-left">
+              <button className="recover-button" onClick={() => void handleRecover()} disabled={recovering}>
+                {recovering ? "Recovering…" : "Recover"}
+              </button>
 
-          <AnimatePresence initial={false}>
-            {detailsOpen && (
-              <motion.div
-                key="details"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25, ease: "easeInOut" }}
-                style={{ overflow: "hidden" }}
-              >
-                <section>
+              <RecoveryGraph
+                revealed={revealed}
+                finished={finished}
+                recovering={recovering}
+                succeeded={succeeded}
+                failed={failed}
+                participant1Alive={participant1Alive}
+              />
+
+              <StageRail revealed={revealed} finished={finished} failed={failed} />
+
+              <IdentityCompare ownerPartyId={status.owner} recovered={succeeded} />
+
+              {recoverOutcome !== null && (
+                <div className={`recover-outcome recover-${recoverOutcome.kind}`}>
                   <p>
-                    Policy <code>{status.policyId}</code> — owner <code>{status.owner}</code>
+                    {recoverOutcome.kind === "success" ? "✅ " : "❌ "}
+                    {recoverOutcome.summary}
                   </p>
-                  <p>
-                    k={status.k} n={status.n} frequency={status.frequencyHours}h
-                  </p>
-                  <p className="hint">
-                    n includes the owner's own fragment — it isn't listed below since the owner doesn't
-                    challenge itself.
-                  </p>
-                </section>
+                  {recoverOutcome.summary !== recoverOutcome.raw && (
+                    <pre className="recover-raw">{recoverOutcome.raw}</pre>
+                  )}
+                </div>
+              )}
+            </section>
 
-                <section>
-                  <h2>Custodians</h2>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Custodian</th>
-                        <th>Custody accepted</th>
-                        <th>Blob hash</th>
-                        <th>Open challenges</th>
-                        <th>Last response</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {status.custodians.map((c) => (
-                        <tr key={c.custodian} className={`status-${c.status}`}>
-                          <td>{c.custodian}</td>
-                          <td>{c.acceptedCustody ? "yes" : "no"}</td>
-                          <td>
-                            {c.blobHash !== null ? (
-                              <code title={c.blobHash}>{shortHash(c.blobHash)}</code>
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-                          <td>{c.openChallenges}</td>
-                          <td>{c.lastResponseAt ?? "—"}</td>
-                          <td>{STATUS_LABEL[c.status]}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </section>
+            <section className="dashboard-right">
+              <ProseExplainer />
+              <Positions positions={positions} />
+              <CustodianList custodians={status.custodians} />
+            </section>
+          </div>
 
-                <Positions positions={positions} />
-                <CiphertextPanel ciphertext={ciphertext} positions={positions} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <section className="recovery-hero">
-            <IdentityCompare ownerPartyId={status.owner} recovered={recoverOutcome?.kind === "success"} />
-            <p>
-              Restores <code>{status.owner}</code>'s state onto <code>{RECOVER_TARGET}</code> using{" "}
-              {RECOVER_K} of {status.n} fragments.
-            </p>
-            <button className="recover-button" onClick={() => void handleRecover()} disabled={recovering}>
-              {recovering ? "Recovering…" : "Recover"}
-            </button>
-            <RecoveryTimer startedAt={recoverStartedAt} endedAt={recoverEndedAt} />
-            {(recovering || recoverProgress.length > 0) && (
-              <div style={{ marginTop: "1.5rem" }}>
-                <RecoveryGraph
-                  events={recoverProgress}
-                  recovering={recovering}
-                  succeeded={recoverOutcome?.kind === "success"}
-                  failed={recoverOutcome?.kind === "error"}
-                />
-              </div>
-            )}
-            {recoverOutcome !== null && (
-              <div className={`recover-outcome recover-${recoverOutcome.kind}`}>
-                <p>
-                  {recoverOutcome.kind === "success" ? "✅ " : "❌ "}
-                  {recoverOutcome.summary}
-                </p>
-                {recoverOutcome.summary !== recoverOutcome.raw && (
-                  <pre className="recover-raw">{recoverOutcome.raw}</pre>
-                )}
-              </div>
-            )}
-          </section>
+          <TechnicalDetails status={status} ciphertext={ciphertext} />
         </>
       )}
     </main>
