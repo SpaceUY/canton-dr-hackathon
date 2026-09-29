@@ -21,17 +21,35 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 // participant is host:port of its http-ledger-api, e.g. "participant1:5013".
 export async function resolveParty(participant: string, hint: string): Promise<string> {
   const namespace = await participantNamespace(participant);
-  const found = await request<{ partyDetails: { party: string }[] }>(
-    `http://${participant}/v2/parties/party?parties=${hint}::${namespace}`,
-  );
+  const lookup = () =>
+    request<{ partyDetails: { party: string }[] }>(`http://${participant}/v2/parties/party?parties=${hint}::${namespace}`);
+
+  const found = await lookup();
   const existing = found.partyDetails[0]?.party;
   if (existing !== undefined) return existing;
 
-  const allocated = await request<{ partyDetails: { party: string } }>(`http://${participant}/v2/parties`, {
-    method: "POST",
-    body: JSON.stringify({ partyIdHint: hint, identityProviderId: "" }),
-  });
-  return allocated.partyDetails.party;
+  try {
+    const allocated = await request<{ partyDetails: { party: string } }>(`http://${participant}/v2/parties`, {
+      method: "POST",
+      body: JSON.stringify({ partyIdHint: hint, identityProviderId: "" }),
+    });
+    return allocated.partyDetails.party;
+  } catch (err) {
+    // Canton itself reports REQUEST_ALREADY_IN_FLIGHT (with its own
+    // suggested "retryInfo": "1 second") when a concurrent identical
+    // allocation is already being processed on the same node - reproduced
+    // live during `make demo-reset`, not a bug in this code. Poll for the
+    // party to show up instead of blindly re-POSTing, which would just
+    // race the same in-flight request again.
+    if (!(err instanceof Error) || !err.message.includes("REQUEST_ALREADY_IN_FLIGHT")) throw err;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const retryFound = await lookup();
+      const retryExisting = retryFound.partyDetails[0]?.party;
+      if (retryExisting !== undefined) return retryExisting;
+    }
+    throw new Error(`resolveParty(${participant}, ${hint}): REQUEST_ALREADY_IN_FLIGHT never resolved after 10s`);
+  }
 }
 
 // Whether `participant` already hosts `partyId` locally (isLocal: true), as
