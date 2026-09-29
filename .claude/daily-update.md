@@ -1,6 +1,14 @@
 Date: 2026-09-29
 Developer: tomascmk
 
+- Feedback del developer mirando el dashboard nuevo en el navegador (primera vez): recovery tardó
+  casi 2 minutos, y el link/label de identidad quedaba tapado detrás del nodo "Owner's own backup".
+  Ambos arreglados: el segundo era un problema de posición (agent1 estaba justo en el camino de la
+  curva participant1→participant4, se movió abajo de los custodios reales); el primero era que
+  cargar y verificar la identidad arrancaban cada uno su propia consola de Canton — se unieron en un
+  solo script, midiendo bajo carga tranquila del host: 112s → 53s, sin perder ninguno de los 16
+  eventos de progreso.
+
 - Destrabó el panel de posiciones reales resetenado el ambiente entero a cero, en vez de forzar una
   cirugía riesgosa de topología (esa vía pedía un flag de bypass de seguridad de Canton — bloqueada
   con razón por el clasificador de auto mode).
