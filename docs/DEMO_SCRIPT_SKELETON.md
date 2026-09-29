@@ -23,7 +23,8 @@ criptográfica de commitments. Nada de esto depende del spike de identidad.
 
 ## 1:00–1:30 — El desastre, en vivo
 
-- Terminal, no botón: `docker stop infra-participant1-1 && docker rm infra-participant1-1 && docker volume rm infra_participant1_data`.
+- Terminal, no botón: `docker stop -t 1 infra-participant1-1 && docker rm infra-participant1-1 && docker volume rm infra_participant1_data`
+  (`-t 1`: sin eso, el apagado gradual del JVM varía 0.6–7.8s; ver ADR-006 en el vault).
   No es solo matar el proceso — borra el disco, que es lo que un desastre real hace.
 - Decir en voz alta qué se acaba de perder (el nodo dueño de los datos).
 
