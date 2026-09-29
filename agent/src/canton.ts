@@ -23,6 +23,13 @@ export function assertSafeIdentifier(value: string, label: string): void {
 // Repair commands (export_acs/import_acs) only exist in the Scala console,
 // not the Ledger JSON API — so every operation here means writing a small
 // .canton script and running it as a subprocess, then reading back stdout.
+// ASCII only in scriptBody (including its comments): this container's JVM
+// reads the .canton file with a non-UTF-8 default charset (no locale
+// packages installed), so an em dash or any other non-ASCII character
+// inside the script fails with "MalformedInputException: Input length = 1"
+// - use a plain hyphen. Found live: a real em dash in rehostParty.ts's
+// propose_delta comment broke the FIRST real re-hosting of a fresh
+// environment (idempotent skip paths never hit it in earlier testing).
 export async function runCantonScript(scriptBody: string): Promise<string> {
   const scriptPath = join(tmpdir(), `agent-${randomUUID()}.canton`);
   await writeFile(scriptPath, scriptBody, "utf8");
