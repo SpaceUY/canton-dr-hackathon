@@ -16,6 +16,14 @@ Developer: tomascmk
   el vault.
 - No se pudo verificar el aspecto visual real en un navegador esta sesión (sin herramienta de
   browser) — todo lo de arriba viene de cronometrar el mismo backend que usa el botón.
+- Segunda ronda, con feedback del developer sobre el ensayo: reemplazó el único milestone al final
+  de la fase de identidad por 9 sub-eventos reales (proponer/firmar/cargar/verificar); agregó
+  `make demo-reset` (un comando, estado pre-desastre exacto, se verifica solo y falla ruidosamente);
+  investigó y arregló la variación de `docker stop` (0.6–7.8s → `-t 1` consistente en <1.5s).
+- Hallazgo nuevo en la segunda ronda: bajo carga alta sostenida del host (tras muchos resets
+  seguidos), `recover` puede fallar con un timeout INTERNO de Canton, no un bug propio — probable
+  explicación real detrás de fallas "misteriosas" pasadas que se atribuían sólo a Docker Desktop.
+  Corrida final exitosa: 82s, 16 eventos de progreso reales (antes eran 7).
 
 ---
 Date: 2026-09-28
