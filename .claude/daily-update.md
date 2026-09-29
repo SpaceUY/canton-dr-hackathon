@@ -1,6 +1,16 @@
 Date: 2026-09-29
 Developer: tomascmk
 
+- Evaluó sumar un cuarto custodio independiente (para demostrar tolerancia a caídas en vivo) y,
+  con el análisis de costo/riesgo hecho, se decidió NO hacerlo — la máquina ya mostró contención
+  de CPU real hoy, y sumar otro proceso de Canton corriendo siempre empeora justo esa fragilidad,
+  más el timebox que se termina. Se documentó la decisión en el vault para no repetir el análisis.
+- En el camino se encontró y arregló un bug real, independiente de esa decisión: `recover()`
+  crasheaba entero si un custodio estaba genuinamente caído (no simulado con un 404 — el propio
+  `fetch()` rechazaba sin capturar). Verificado matando un contenedor real: ahora salta al
+  custodio caído y sigue con los demás si alcanza el umbral, o falla con un mensaje claro en
+  pantalla si no alcanza — antes era una excepción cruda tras un "internal error" genérico.
+
 - Feedback del developer mirando el dashboard nuevo en el navegador (primera vez): recovery tardó
   casi 2 minutos, y el link/label de identidad quedaba tapado detrás del nodo "Owner's own backup".
   Ambos arreglados: el segundo era un problema de posición (agent1 estaba justo en el camino de la
