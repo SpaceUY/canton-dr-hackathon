@@ -61,10 +61,10 @@ val proposal = target.topology.party_to_participant_mappings.propose_delta(
   // needs owner to be an observer), but owner itself could never submit its
   // own commands from the recovered node.
   // Not Submission: canConfirm is true for both Confirmation and Submission
-  // (TopologyMapping.scala) — Submission additionally lets the PARTICIPANT
+  // (TopologyMapping.scala) - Submission additionally lets the PARTICIPANT
   // sign on the party's behalf, meaningless for an external party that
   // always signs client-side. participant1, the original undamaged host,
-  // already grants only Confirmation for this party — matching it is the
+  // already grants only Confirmation for this party - matching it is the
   // least-privilege, fidelity-preserving choice.
   adds = Seq((target.id, ParticipantPermission.Confirmation)),
   store = synchronizerId,
@@ -125,6 +125,39 @@ loader.topology.transactions.load(
 )
 
 target.synchronizers.modify("${synchronizerAlias}", _.copy(manualConnect = false))
+
+// Wait for target to actually be back online before touching it further -
+// modify(manualConnect=false) alone doesn't guarantee it reconnects within
+// this same script invocation.
+var reconnectAttempts = 0
+while (!target.synchronizers.is_connected("${synchronizerAlias}") && reconnectAttempts < 20) {
+  target.synchronizers.reconnect("${synchronizerAlias}")
+  Thread.sleep(1000)
+  reconnectAttempts += 1
+}
+
+// Without this, owner stays able to RECEIVE commands on target but can
+// never SUBMIT its own (PARTY_CURRENTLY_ONBOARDING) - reproduced live
+// against a fresh environment: rehostParty's hosting succeeds, but the
+// very next real command owner submits from target fails outright.
+// beginOffsetExclusive=1L (not the current ledger end) - using the
+// current end hung for 54s against this node's own gRPC deadline instead
+// of resolving, presumably searching from the wrong direction to find
+// the party's activation transaction.
+// Fire-and-forget, NOT retried in a loop here: Canton's own doc says this
+// call "records the clearance operation as pending, ensuring it can
+// automatically resume" on its own in the background - a synchronous
+// retry loop here blocks BEFORE recover.ts's first progress event ever
+// fires, which live-tested left the UI's recovery graph looking
+// completely dead for ~90s before all 7 events landed in a single burst
+// at the very end. Recovery's own visible progress matters more than
+// having submission-readiness confirmed synchronously - Canton finishes
+// the job on its own shortly after.
+val partyIdForClear = PartyId.tryFromProtoPrimitive("${partyId}")
+val clearSynchronizerId = target.synchronizers.id_of("${synchronizerAlias}")
+val onboardingStatus = target.parties.clear_party_onboarding_flag(partyIdForClear, clearSynchronizerId, 1L, None)
+println(s"REHOST_ONBOARDING_STATUS: $onboardingStatus")
+
 println("REHOST_LOAD_OK")
 `.trim();
 
