@@ -348,21 +348,32 @@ button:disabled {
 }
 
 /* Identity headline - the project's proof, stays prominent, never collapsed */
-/* Vertical stack (before, arrow/badge, after), not a horizontal row that
-   wraps unpredictably - the left column isn't wide enough to fit two
-   ~300px cards side by side once the graph is next to them, and a wrap
-   there looked accidental/off-center instead of deliberate. */
+/* Full-width row (see App.tsx - lives below .dashboard-columns, not
+   inside the narrow left column, which never had room for both cards
+   plus the badge side by side). Horizontal by default; only stacks on
+   genuinely narrow viewports. */
 .identity-compare {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.3rem;
-  margin: 0;
+  justify-content: center;
+  gap: 1rem;
+  margin: 0.6rem 0;
+}
+
+@media (max-width: 640px) {
+  .identity-compare {
+    flex-direction: column;
+  }
+
+  .identity-compare-arrow .identity-compare-dash {
+    transform: rotate(90deg);
+    display: inline-block;
+  }
 }
 
 .identity-card {
-  width: 100%;
-  max-width: 320px;
+  flex: 1 1 300px;
+  max-width: 340px;
   border: 1px solid #2a2e37;
   border-radius: 10px;
   padding: 0.4rem 0.9rem;
@@ -403,13 +414,11 @@ button:disabled {
 }
 
 .identity-compare-arrow {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.identity-compare-arrow .identity-compare-dash {
-  transform: rotate(90deg);
+  min-width: 90px;
 }
 
 .identity-compare-dash {

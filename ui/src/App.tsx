@@ -203,8 +203,6 @@ export function App() {
 
               <StageRail revealed={revealed} finished={finished} failed={failed} />
 
-              <IdentityCompare ownerPartyId={status.owner} recovered={succeeded} />
-
               {recoverOutcome !== null && (
                 <div className={`recover-outcome recover-${recoverOutcome.kind}`}>
                   <p>
@@ -227,6 +225,8 @@ export function App() {
               <CustodianList custodians={status.custodians} />
             </section>
           </div>
+
+          <IdentityCompare ownerPartyId={status.owner} recovered={succeeded} />
 
           <TechnicalDetails status={status} ciphertext={ciphertext} />
         </>
