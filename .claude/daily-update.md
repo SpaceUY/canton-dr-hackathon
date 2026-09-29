@@ -1,6 +1,26 @@
 Date: 2026-09-29
 Developer: tomascmk
 
+- Destrabó el panel de posiciones reales resetenado el ambiente entero a cero, en vez de forzar una
+  cirugía riesgosa de topología (esa vía pedía un flag de bypass de seguridad de Canton — bloqueada
+  con razón por el clasificador de auto mode).
+- Ensayo completo de punta a punta, tres corridas, cronometrado: destruir el nodo → recuperar por la
+  misma API que usa el botón → cerrar con una contraparte transando. Encontró y arregló 4 bugs reales
+  que nunca se habían disparado antes (el ambiente viejo siempre tomaba caminos "ya hecho, saltear"):
+  seed mandando comandos en batch (no soportado), un carácter no-ASCII rompiendo la lectura de un
+  script de Canton en el contenedor, la party recuperada sin poder emitir sus propios comandos
+  (flag de onboarding sin limpiar), y un bug de logging que ocultaba los errores reales de Canton.
+- Hallazgo más importante del ensayo: el grafo de recuperación se queda sin mostrar nada por ~55 de
+  los ~72 segundos que tarda un recovery real, porque el backend sólo reporta el primer paso
+  DESPUÉS de terminarlo entero, no al empezar — pendiente de arreglar, documentado con prioridad en
+  el vault.
+- No se pudo verificar el aspecto visual real en un navegador esta sesión (sin herramienta de
+  browser) — todo lo de arriba viene de cronometrar el mismo backend que usa el botón.
+
+---
+Date: 2026-09-28
+Developer: tomascmk
+
 - Wrote the final 5-minute demo script (identity-recovery timebox closed 2026-09-28): opens killing
   participant1 in the first 10 seconds, closes with a counterparty transacting against the recovered
   party, three named live-failure points with a plan B each. Vault: Flows/5-Minute Demo Flow.md.
