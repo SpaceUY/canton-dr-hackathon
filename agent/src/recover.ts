@@ -70,7 +70,10 @@ export async function recover(options: RecoverOptions): Promise<string> {
       if (share !== undefined) shares.push(share);
     }
     if (shares.length < threshold) {
-      throw new Error(`only got ${shares.length}/${threshold} required shares`);
+      throw new Error(
+        `only ${shares.length} of ${threshold} required custodians responded (${endpoints.length} tried) - ` +
+          "not enough fragments to reconstruct the key",
+      );
     }
 
     const key = await combine(shares);
@@ -95,8 +98,20 @@ async function fetchFirstAvailable(urls: string[]): Promise<Buffer> {
 }
 
 async function fetchOptional(url: string): Promise<Uint8Array | undefined> {
-  const res = await fetch(url);
-  if (res.status === 404) return undefined;
-  if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return undefined;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    // A custodian that's genuinely down (container stopped, network
+    // partition) rejects here instead of responding with any HTTP status
+    // at all - treated the same as a 404 ("no share here"), not a hard
+    // failure. A real custodian hiccup must make recover() skip it and
+    // try the next one, not crash the whole recovery over one endpoint -
+    // reproduced live 2026-09-29 by killing a real custodian container
+    // mid-recovery before this fix (an uncaught rejection here used to
+    // take down the entire attempt instead of falling through).
+    console.error(`custodian unreachable, skipping: ${url}`, err);
+    return undefined;
+  }
 }

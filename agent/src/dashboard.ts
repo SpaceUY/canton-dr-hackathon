@@ -197,9 +197,14 @@ async function handle(
     res.writeHead(404).end();
   } catch (err) {
     console.error("dashboard request failed:", err);
-    res
-      .writeHead(500, { "content-type": "application/json" })
-      .end(JSON.stringify({ error: "internal error" }));
+    // Not a generic "internal error": this backend has no auth and no
+    // adversarial clients (a trusted demo network, see server.ts's own
+    // comment) - the actual message (e.g. "only 1 of 2 required
+    // custodians responded") is exactly what a presenter needs to see on
+    // screen instead of a dead end, not a leaked internal detail worth
+    // hiding.
+    const message = err instanceof Error ? err.message : "internal error";
+    res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: message }));
   }
 }
 
