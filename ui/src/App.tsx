@@ -16,6 +16,7 @@ import { IdentityCompare } from "./IdentityCompare";
 import { MetricsStrip } from "./MetricsStrip";
 import { Positions } from "./Positions";
 import { ProseExplainer } from "./ProseExplainer";
+import { buildRecoverabilityReportHtml } from "./recoverabilityReport";
 import { RecoveryGraph } from "./RecoveryGraph";
 import { StageRail } from "./StageRail";
 import { TechnicalDetails } from "./TechnicalDetails";
@@ -159,6 +160,16 @@ export function App() {
   const succeeded = recoverOutcome?.kind === "success";
   const failed = recoverOutcome?.kind === "error";
 
+  // Opened as a Blob URL in a new tab, not downloaded directly — a jury
+  // member reads it there and prints/saves as PDF (Cmd/Ctrl+P) themselves;
+  // no backend endpoint, it's built entirely from data already on screen.
+  const handleDownloadReport = () => {
+    if (status === null) return;
+    const html = buildRecoverabilityReportHtml(status, positions);
+    const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    window.open(url, "_blank");
+  };
+
   return (
     <main className="app">
       <h1>
@@ -223,6 +234,9 @@ export function App() {
               <ProseExplainer />
               <Positions positions={positions} />
               <CustodianList custodians={status.custodians} />
+              <button className="report-button" onClick={handleDownloadReport}>
+                Download recoverability report
+              </button>
             </section>
           </div>
 
