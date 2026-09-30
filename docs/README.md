@@ -1,67 +1,118 @@
-# canton-dr — Run guide
+# canton-dr
 
-Step-by-step guide to bring up the whole stack locally and run the demo.
-For *why* things are built this way, see `../infra/README.md` (one
-"Step N findings" section per plan step) and `../CLAUDE.md` (the original
-problem/solution/scope). For what's done and what's left, see
-`ROADMAP.md`.
+Verifiable decentralized disaster recovery for Canton nodes, built for the Canton Network
+hackathon (AppsFactory). The problem: Canton keeps each participant's state local and private —
+if a node's disk is lost and its backups are gone too, that data is unrecoverable, and there's no
+way to know a backup is still good until the network starts rejecting your transactions.
+
+The approach: a node encrypts its ledger state (ACS), splits the encryption key k-of-n via Shamir
+Secret Sharing, and replicates the encrypted blob plus key fragments across other participants
+acting as custodians — none of whom ever sees plaintext. A Daml contract on Canton itself
+periodically challenges each custodian to prove it still holds its fragment. On recovery, k
+fragments reconstruct the key, the ACS is restored onto a new node, and — the part that turns this
+from "a backup tool" into "the node survives" — the party's own **identity** is re-authorized on
+that new node using a key that never lived inside Canton, so counterparties keep transacting with
+it with zero special handling. Everything below has been verified against the real Canton 3.5.18
+binary, including genuinely destroying a container and its volume, not simulating it.
+
+For architecture rationale and the full day-by-day decision log, see `../CLAUDE.md` and the
+sibling vault repo `../canton-dr-hackathon-vault` (start at its `Hub.md`).
 
 ## Prerequisites
 
-- **Docker Desktop, with at least 10GB of memory allocated.** 5 Canton
-  JVMs + 3 agents + the dashboard came close to OOM-killing containers at
-  Docker Desktop's default (7.65GB) during testing — see step 4's findings
-  in `../infra/README.md`.
+- **Docker Desktop, with at least 10GB of memory allocated.** 5 Canton JVMs + 3 custodian agents +
+  the dashboard came close to OOM-killing containers at Docker Desktop's default (7.65GB) during
+  testing.
 - **Node.js + pnpm** — for building the Daml model and running the UI.
-- **`dpm`** (Digital Asset Package Manager) — not on `PATH` by default.
-  Download from https://github.com/digital-asset/dpm/releases
-  (`dpm-<version>-darwin-arm64.tar.gz` for Apple Silicon Macs).
+- **`dpm`** (Digital Asset Package Manager) to build the Daml model. Download from
+  https://github.com/digital-asset/dpm/releases. If it's not on `PATH` and you'd rather not install
+  it, `damlc build --package-root .` (from `daml/`) works identically — `dpm build` is really just a
+  thin wrapper around `damlc`.
 
-## 1. Build the Daml model
+## Quick start (recommended)
+
+One command rebuilds the whole environment from scratch into a verified, working pre-disaster
+state — owner's node alive, policy active, custodians have accepted custody and answered a real
+challenge, 3 real positions seeded:
 
 ```sh
-cd daml
-DAML_VERSION=3.5.2 dpm build
+cd daml && DAML_VERSION=3.5.2 dpm build && cd ..   # only needed once, or after changing daml/
+make rebuild        # builds the agent image once
+make demo-reset     # tears down, rebuilds, seeds, and verifies - takes a few minutes
 ```
 
-Produces `.daml/dist/canton-dr-0.1.0.dar` — `bootstrap` (next step) finds
-it automatically, no need to reference the filename anywhere.
+`make demo-reset` ends with `agent verify-demo-state`, which **fails loudly, naming exactly what's
+wrong**, if the result isn't genuinely a fresh pre-disaster state (e.g. `participant1` unreachable,
+a custodian hasn't accepted custody, positions missing). If it succeeds, you're ready to run the
+demo. If a step fails with a transient Canton or Docker error (this happens occasionally, especially
+right after a burst of other `docker` activity — see Troubleshooting), just re-run `make demo-reset`;
+every step in it is idempotent.
 
-## 2. Start the Canton topology
+Then start the UI:
+
+```sh
+cd ui
+pnpm install   # first time only
+pnpm dev
+```
+
+Open the URL it prints (`http://localhost:5173`) — you'll see the live dashboard: a metrics strip,
+the system map (participant1 shown genuinely alive, polled every 3s), real positions, real
+custodian status, and a **Recover** button.
+
+## Running the demo end to end
+
+The full choreography (and the timed, rehearsed 5-minute script for presenting it) lives in the
+vault's `Flows/5-Minute Demo Flow.md`. The short version, once `make demo-reset` has left you in a
+clean pre-disaster state:
+
+**1. Destroy the node for real** (not just `docker stop` — Canton's JVM does a graceful shutdown of
+variable length; `-t 1` forces it fast and is more honest to what a real disaster does anyway):
+
+```sh
+cd infra
+docker stop -t 1 infra-participant1-1 && docker rm infra-participant1-1 && docker volume rm infra_participant1_data
+```
+
+The UI's system map detects this on its own within a few seconds (`GET /participant1-status`
+polling) — nothing to do on your side.
+
+**2. Recover** — click the button in the UI, or run the equivalent directly:
+
+```sh
+docker compose run --rm agent recover --target participant4 --target-ledger-api participant4:5043 \
+  --loader-participant participant2 --policy-id demo \
+  --endpoints http://agent2:4002,http://agent3:4003 --k 2
+```
+
+This deliberately queries only `agent2`/`agent3` (the two real, independent custodians) — `agent1`
+(the owner's own backup copy) is never touched, so the recovery genuinely depends on the 2-of-2
+threshold among independent parties, not on the owner's own spare copy. Typical time: ~15s if the
+party is already re-hosted (idempotent), ~40-100s for a genuinely fresh re-authorization, depending
+on host load — see the vault's rehearsal notes for measured ranges.
+
+**3. Close the loop** — prove a counterparty can transact with the recovered party with zero special
+handling:
+
+```sh
+docker compose run --rm agent counterparty-tx --as custodian2 --participant participant2:5023 \
+  --label post-recovery-demo
+```
+
+## Manual step-by-step setup
+
+`make demo-reset` runs all of this for you (see the `Makefile`) — reading it is a faster way to
+understand the full sequence than the prose below, but here it is spelled out:
 
 ```sh
 cd infra
 docker compose up -d synchronizer participant1 participant2 participant3 participant4
-```
-
-Wait until all 5 report healthy (`docker compose ps`, or watch
-`docker compose logs -f`), then:
-
-```sh
-docker compose up bootstrap   # connects the 4 participants, uploads the DAR
-docker compose up seed        # creates the demo Record contract on 1/2/3
-```
-
-Both are one-shot containers — they run once and exit 0 on success. If
-either fails, re-run it; both are idempotent.
-
-## 3. Start the agents and the dashboard
-
-```sh
+# wait until all 5 report healthy (docker compose ps)
+docker compose run --rm bootstrap   # connects the 4 participants, uploads the DAR
 docker compose up -d agent1 agent2 agent3 dashboard
-```
 
-- `agent1`/`agent2`/`agent3`: one HTTP server per node, storing/returning
-  encrypted blobs and key shares (the custodian side of backup/recovery).
-- `dashboard`: the owner-facing API the UI talks to (port `4010`).
+docker compose run --rm agent seed  # allocates owner as an external party, seeds 3 real Positions + the demo Record
 
-## 4. Seed a backup policy
-
-This creates the on-ledger registry, distributes the encrypted backup to
-the 3 custodians, and has 2 of them accept custody — so the dashboard and
-the demo have something real to show.
-
-```sh
 docker compose run --rm agent create-policy --owner-participant participant1:5013 --owner owner \
   --custodian participant2:5023:custodian2 --custodian participant3:5033:custodian3 \
   --k 2 --n 3 --frequency-hours 1 --policy-id demo
@@ -71,139 +122,94 @@ docker compose run --rm agent distribute --source participant1 --party owner --p
 
 docker compose run --rm agent accept-custody --as agent2 --participant participant2:5023 --custodian custodian2 \
   --owner-participant participant1:5013 --owner owner --policy-id demo
-
 docker compose run --rm agent accept-custody --as agent3 --participant participant3:5033 --custodian custodian3 \
   --owner-participant participant1:5013 --owner owner --policy-id demo
-```
 
-Optional, to see a custodian in "Awaiting response" instead of "No
-challenge yet":
+docker compose run --rm agent distribute-identity --policy-id demo \
+  --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
 
-```sh
+# optional, so custodians show "Responded" instead of "No challenge yet":
 docker compose run --rm agent challenge --owner-participant participant1:5013 --owner owner \
   --custodian-participant participant2:5023 --custodian custodian2 --policy-id demo --challenge-id ch-1
+docker compose run --rm agent respond --as agent2 --participant participant2:5023 --custodian custodian2 \
+  --policy-id demo --challenge-id ch-1
+# (repeat with custodian3/participant3:5033/agent3 for the second custodian)
+
+docker compose run --rm agent verify-demo-state
 ```
 
-Check it worked:
+Check it worked directly: `curl -s http://localhost:4010/status | python3 -m json.tool`.
 
-```sh
-curl -s http://localhost:4010/status | python3 -m json.tool
-```
+## Command reference (`docker compose run --rm agent <command> ...`)
 
-## 5. Run the UI
+Everything below is `agent/src/cli.ts` — run from `infra/`. `agent1`/`agent2`/`agent3` are
+long-running custodian servers (`serve`); never run commands *on* them (`docker compose run
+agent1 ...`) — always use the separate, hostname-less `agent` service, even for commands whose
+`--endpoints`/`--custodian` point at `agent1/2/3`. Running on `agent1/2/3` starts a second container
+sharing that hostname, and Docker's embedded DNS can route the real agent's own self-requests into
+that ephemeral, server-less container instead (`ECONNREFUSED`).
 
-```sh
-cd ui
-pnpm install   # first time only
-pnpm dev
-```
+| Command | What it does |
+|---|---|
+| `seed` | Allocates `owner` as a real external party (its signing key never lives inside Canton), seeds 3 real `Position` contracts + the demo `Record`. Idempotent. |
+| `create-policy --owner-participant <p> --owner <hint> --custodian <p:port:hint> [--custodian ...] --k <n> --n <n> --frequency-hours <h> --policy-id <id>` | Creates the on-ledger `BackupPolicy` registry naming the custodians and the k-of-n threshold. |
+| `distribute --source <p> --party <hint> --policy-id <id> --endpoints <url,...> --k <n>` | Encrypts the ACS, Shamir-splits the encryption key, pushes the blob + a key share to each endpoint. |
+| `distribute-identity --policy-id <id> --endpoints <url,...> --k <n> [--key-path <path>]` | Same idea, for the party's own identity key — split and distributed independently of the data key, no shared dependency between the two. |
+| `accept-custody --as <name> --participant <p> --custodian <hint> --owner-participant <p> --owner <hint> --policy-id <id>` | A custodian records on-ledger that it received its blob+share (`--as` matches an `agentN`, reading straight from that agent's own custody volume). |
+| `challenge --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | Owner issues a challenge asking a custodian to prove it still holds its fragment. |
+| `respond --as <name> --participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | The named custodian answers an open challenge with a real proof. |
+| `challenge-loop --owner-participant <p> --owner <hint> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --interval-seconds <n>` | Runs `challenge` on a timer against every listed custodian (long-running). |
+| `recover --target <p> --target-ledger-api <host:port> --loader-participant <console> --policy-id <id> --endpoints <url,...> --k <n>` | The main event: re-authorizes the party's identity on `--target` (propose/sign/load a topology transaction via Interactive Submission), reconstructs the encryption key from k shares, decrypts and imports the ACS. Degrades gracefully if a queried custodian is genuinely unreachable — skips it and tries the next, succeeding if enough others respond, failing with a clear message otherwise. |
+| `recover-identity --policy-id <id> --endpoints <url,...> --k <n> --custodian-participant <p> --custodian <hint> [--key-path <path>]` | Rebuilds *only* the identity key from its own Shamir shares (a separate disaster: the key file itself was lost, not the whole node) — verifies the reconstructed key against a custodian's own ledger view before trusting it. |
+| `counterparty-tx --as <custodian-hint> --participant <p> [--label <text>]` | The closing proof: an ordinary counterparty creates a brand-new contract naming the recovered `owner` as observer, with zero special re-onboarding. Resolves both party ids itself. |
+| `request-recovery --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | Owner formally asks a custodian to hand back its share (on-ledger `RecoveryRequest`) — distinct from just calling `recover` directly. |
+| `respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | The named custodian answers an open `RecoveryRequest`. |
+| `check-commitment --counterparty-participant <console> --about-participant <console>` | Shows the real ACS commitments two participants independently computed and matched — the "proof the state is correct" half of the pitch, works on the pre-disaster topology at any time. |
+| `backup --source <p> --party <hint> --out <path>` / `restore --target <p> --in <path>` | Raw `repair.export_acs`/`import_acs`, scoped to one party — the low-level primitive `distribute`/`recover` build on. |
+| `serve --port <port>` | Starts a custodian's own blob/share HTTP store (what `agent1/2/3` run). |
+| `dashboard --port <port> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --recover-target <p> --recover-target-ledger-api <host:port> --recover-endpoints <url,...> --recover-loader-participant <console>` | Starts the owner-facing read API + recovery trigger the UI talks to. |
+| `verify-demo-state` | No args. Fails loudly, naming exactly what's wrong, unless the environment is genuinely a fresh pre-disaster state (owner alive+hosted on `participant1`, not yet on `participant4`, policy/custody/challenges/positions all real and current). |
 
-Open the URL it prints (`http://localhost:5173`). You should see the
-policy (`k=2 n=3 frequency=1h`), a table with both custodians and their
-status, and a "Recover" button.
+## Dashboard HTTP API (`http://localhost:4010`, no auth — trusted local network only)
 
-## 6. Run the recovery demo
+| Endpoint | Returns |
+|---|---|
+| `GET /status` | Policy id, k/n, and each custodian's real on-chain status (custody accepted, open challenges, last response, derived status). |
+| `GET /positions` | The 3 real `Position` contracts (counterparty, signed amount, currency). |
+| `GET /ciphertext` | Real encrypted bytes fetched live from an actual custodian's own volume. |
+| `GET /participant1-status` | `{alive: boolean}` — real reachability check, not a scripted state. |
+| `GET /recover-progress` | The current recovery's real event stream (rehost sub-steps, custodian query/response, the 3 milestones), reset at the start of every `POST /recover`. |
+| `POST /recover` `{targetParticipant, endpoints, k}` | Triggers `recover()` for real; `targetParticipant`/`endpoints` are validated against the fixed values the dashboard was started with, not trusted blindly from the request body. |
 
-The story: participant1 (the owner) loses its base; recovery uses 2 of the
-3 key shares to decrypt the backup and restore the state onto an empty
-node. Concretely, the empty node is `participant4` — a stand-in kept
-separate from participant1/2/3 on purpose, so the demo doesn't need to
-solve node identity recovery too (a deliberately separate, out-of-scope
-problem — see `../CLAUDE.md`).
+## Makefile targets
 
-Click **Recover** in the UI, or the same thing from the command line:
-
-```sh
-docker compose run --rm agent recover --target participant4 --policy-id demo \
-  --endpoints http://agent2:4002,http://agent3:4003 --k 2
-```
-
-Note this uses only `agent2` and `agent3` — `agent1` (the owner's own
-share) is deliberately left out, so the recovery genuinely depends on the
-2-of-3 threshold rather than the happy path where every share is available.
-
-Verify the recovered contract directly. `activeAtOffset: 0` means "at the
-very start of the ledger" (empty) — fetch the real ledger end first:
-
-```sh
-OWNER="<owner-party-id>"   # from the dashboard's /status response
-END=$(curl -s http://localhost:5043/v2/state/ledger-end -H "Content-Type: application/json" | jq -r .offset)
-curl -s http://localhost:5043/v2/state/active-contracts \
-  -H "Content-Type: application/json" \
-  --data-raw '{"filter":{"filtersByParty":{"'"$OWNER"'":{"cumulative":[{"identifierFilter":{"WildcardFilter":{"value":{"includeCreatedEventBlob":false}}}}]}},"verbose":true},"verbose":true,"activeAtOffset":'"$END"'}' \
-  | jq -c '.[].contractEntry.JsActiveContract.createdEvent | {templateId}'
-```
-
-To prove the custodian never saw plaintext, show the raw stored blob:
-
-```sh
-docker run --rm -v infra_agent2_custody:/data alpine sh -c "xxd /data/demo/blob.enc | head -5"
-```
-
-## 7. Show the cryptographic proof (ACS commitments)
-
-This is the other half of the pitch's one-liner: proof the shared state is
-correct, independent of the backup. Ask a custodian what it independently
-computed and matched about its shared state with the owner:
-
-```sh
-docker compose run --rm agent check-commitment --counterparty-participant participant2 --about-participant participant1
-```
-
-The output lists real, historical commitment periods (one per minute), each
-with the SHA-256 hash `participant1` and `participant2` computed
-*independently* and its match state — `Match` means both sides agree on the
-shared state without either trusting the other, or the backup. This works
-for any custodian pair (swap in `participant3`) and needs no prior setup
-beyond the policy from step 4 — the topology has been computing these in
-the background the whole time.
-
-Note this only verifies the *pre-disaster* state — the recovery target
-(`participant4`) is a stand-in with a fresh identity (step 6, deliberately
-out of scope), so it has no commitment history of its own yet to check
-against.
+- **`make rebuild`** — the one command to run after editing anything in `agent/src/`. All six
+  agent-based docker-compose services (`agent`, `agent1/2/3`, `dashboard`, `seed`) share a single
+  image tag, so this rebuilds all of them at once — there's no way for one to be stale while
+  another is fresh.
+- **`make demo-reset`** — see Quick Start above. Full environment reset to a verified pre-disaster
+  state, in one command.
 
 ## Resetting between runs
 
-`participant4` and the 3 agents keep state in named Docker volumes, so a
-plain restart resumes where you left off (useful — `recover` is
-idempotent, re-running it doesn't duplicate anything). To start completely
-fresh:
-
-```sh
-docker compose down
-docker volume rm infra_participant4_data infra_agent1_custody infra_agent2_custody infra_agent3_custody infra_agent_exports
-```
-
-then repeat from step 2. Skipping the volume cleanup after a full
-`docker compose down` is the most common failure mode here: `participant4`
-comes back remembering a synchronizer identity from the previous run (the
-synchronizer itself is in-memory, so it gets a new one every time) and
-fails to reconnect. If you see `Connection is not on expected sequencer`
-in `bootstrap`'s logs, this is why — remove the volumes and start over.
+`make demo-reset` already does a full `docker compose down -v` + rebuild — the simplest way to
+start genuinely fresh. If you want to reset without re-seeding (e.g. after a `recover` you want to
+undo), the state lives in named volumes: `participant1_data`, `participant4_data`,
+`owner_identity`, `agent_exports`, `agent1_custody`, `agent2_custody`, `agent3_custody` (all in
+`infra/docker-compose.yml`).
 
 ## Troubleshooting
 
-- **A participant container exits with code 137**: OOM-killed. Raise
-  Docker Desktop's memory limit (see Prerequisites). Restarting just that
-  one participant (`docker compose up -d <service>`) is *not* enough by
-  itself: `participant1/2/3` use in-memory storage, so the restarted one
-  comes back with a brand new identity, and any already-created contract
-  that named its *old* identity as a party (a `BackupPolicy`'s custodian,
-  for instance) becomes permanently invisible to the new one —
-  `accept-custody` and similar will fail with `no BackupPolicy ... visible
-  to <party>`. After restarting the affected participant, re-run
-  `docker compose up bootstrap` then `docker compose up seed` so it
-  properly rejoins, and re-create anything (like the demo policy) that
-  referenced its old identity. If in doubt, do the full reset below
-  instead of restarting a single participant.
-- **`docker compose run agent1 ...` (or `agent2`/`agent3`) hangs or gives
-  `ECONNREFUSED`**: don't run commands on `agent1/2/3` — they're the
-  persistent custodian servers. Always use the separate `agent` service
-  for commands (`docker compose run --rm agent ...`), even when the
-  command's endpoints point at `agent1/2/3`.
-- **`bootstrap` or `seed` seem to re-run every time you bring up something
-  else**: only `agent1`/`agent2`/`agent3`/`dashboard` used to depend on
-  `seed` completing — that dependency was removed because it caused
-  exactly this. If it's happening again, check `depends_on` in
-  `infra/docker-compose.yml`.
+- **A participant container exits with code 137**: OOM-killed. Raise Docker Desktop's memory limit
+  (see Prerequisites).
+- **`bootstrap` or `demo-reset` fails with a transient Canton internal error, or a container
+  reports "unhealthy" right after several resets in a row**: this machine can show real CPU
+  contention after repeated Docker/Canton activity — check `docker stats`, wait for load to settle,
+  and just re-run; every step is idempotent. This is a real, observed failure mode (Canton itself
+  logging "late processing" under sustained load, or an internal `proposeAndAuthorize` timeout), not
+  something wrong with your setup.
+- **`dpm` isn't on `PATH`**: use `damlc build --package-root .` from `daml/` instead — same result.
+  If you've built before and change `daml/*.daml`, bump `version` in `daml/daml.yaml` first (Canton
+  refuses to vet two different-content packages under the same name+version).
+- **`docker compose run agent1 ...` (or `agent2`/`agent3`) hangs or gives `ECONNREFUSED`**: see the
+  note at the top of the Command reference section — always use the separate `agent` service.
