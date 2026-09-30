@@ -6,7 +6,7 @@
 # infra/README.md's "Why these choices") straight from its GitHub releases,
 # into a local, gitignored cache, and run it from there. Reproduces exactly
 # what got this repo's own DAR built the first time a machine had neither
-# tool on PATH (see the vault's Flows/5-Minute Demo Flow.md, 2026-09-30).
+# tool on PATH (2026-09-30).
 set -euo pipefail
 
 cd "$(dirname "$0")"

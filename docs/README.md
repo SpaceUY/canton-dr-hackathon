@@ -1,29 +1,18 @@
-# canton-dr
+# canton-dr — run guide and reference
 
-Verifiable decentralized disaster recovery for Canton nodes, built for the Canton Network
-hackathon (AppsFactory). The problem: Canton keeps each participant's state local and private —
-if a node's disk is lost and its backups are gone too, that data is unrecoverable, and there's no
-way to know a backup is still good until the network starts rejecting your transactions.
-
-The approach: a node encrypts its ledger state (ACS), splits the encryption key k-of-n via Shamir
-Secret Sharing, and replicates the encrypted blob plus key fragments across other participants
-acting as custodians — none of whom ever sees plaintext. A Daml contract on Canton itself
-periodically challenges each custodian to prove it still holds its fragment. On recovery, k
-fragments reconstruct the key, the ACS is restored onto a new node, and — the part that turns this
-from "a backup tool" into "the node survives" — the party's own **identity** is re-authorized on
-that new node using a key that never lived inside Canton, so counterparties keep transacting with
-it with zero special handling. Everything below has been verified against the real Canton 3.5.18
-binary, including genuinely destroying a container and its volume, not simulating it.
-
-For architecture rationale and the full day-by-day decision log, see `../CLAUDE.md` and the
-sibling vault repo `../canton-dr-hackathon-vault` (start at its `Hub.md`).
+How to run, drive and troubleshoot the canton-dr environment. For what the project is, what's real
+versus not, and its known limitations, start at the [root README](../README.md). For why it's built
+this way, see [DECISIONS.md](DECISIONS.md). Everything here was verified against the real Canton
+3.5.18 binary, including genuinely destroying a container and its volume.
 
 ## Prerequisites
 
 - **Docker Desktop, with at least 10GB of memory allocated.** 5 Canton JVMs + 3 custodian agents +
   the dashboard came close to OOM-killing containers at Docker Desktop's default (7.65GB) during
   testing.
-- **Node.js + pnpm** — for building the Daml model and running the UI.
+- **Node.js + pnpm** — for running the UI (and the agent's local typecheck/test). The agent itself
+  runs in Docker.
+- **`curl`** — `make build-dar` uses it to fetch `dpm` when it isn't installed.
 - **Nothing else to install for the Daml model.** `make build-dar` (see Quick start below) builds it
   whether or not `dpm`/`damlc` are on `PATH` — if neither is, it downloads `dpm`'s own binary for
   your OS/arch straight from https://github.com/digital-asset/dpm/releases into `daml/.dpm-cache/`
@@ -65,9 +54,9 @@ custodian status, and a **Recover** button.
 
 ## Running the demo end to end
 
-The full choreography (and the timed, rehearsed 5-minute script for presenting it) lives in the
-vault's `Flows/5-Minute Demo Flow.md`. The short version, once `make demo-reset` has left you in a
-clean pre-disaster state:
+The beat-by-beat 5-minute version, with measured timings, is in the
+[root README](../README.md#the-demo-about-5-minutes). Step by step, once `make demo-reset` has left
+you in a clean pre-disaster state:
 
 **1. Destroy the node for real** (not just `docker stop` — Canton's JVM does a graceful shutdown of
 variable length; `-t 1` forces it fast and is more honest to what a real disaster does anyway):
@@ -92,7 +81,9 @@ This deliberately queries only `agent2`/`agent3` (the two real, independent cust
 (the owner's own backup copy) is never touched, so the recovery genuinely depends on the 2-of-2
 threshold among independent parties, not on the owner's own spare copy. Typical time: ~15s if the
 party is already re-hosted (idempotent), ~40-100s for a genuinely fresh re-authorization, depending
-on host load — see the vault's rehearsal notes for measured ranges.
+on host load. Under sustained high host CPU, Canton itself can hit an internal 1-minute timeout
+(`proposeAndAuthorize-wait-for-effective`); let the load settle (`docker stats`) and re-run — the
+whole pipeline is idempotent.
 
 **3. Close the loop** — prove a counterparty can transact with the recovered party, and that the
 recovered party genuinely signs for itself. Click "Counterparty transacts with recovered owner" in
@@ -167,12 +158,12 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
 | `challenge --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | Owner issues a challenge asking a custodian to prove it still holds its fragment. |
 | `respond --as <name> --participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | The named custodian answers an open challenge with a real proof. |
 | `challenge-loop --owner-participant <p> --owner <hint> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --interval-seconds <n>` | Runs `challenge` on a timer against every listed custodian (long-running). |
-| `recover --target <p> --target-ledger-api <host:port> --loader-participant <console> --policy-id <id> --endpoints <url,...> --k <n>` | The main event: re-authorizes the party's identity on `--target` (propose/sign/load a topology transaction via Interactive Submission), reconstructs the encryption key from k shares, decrypts and imports the ACS. Degrades gracefully if a queried custodian is genuinely unreachable — skips it and tries the next, succeeding if enough others respond, failing with a clear message otherwise. |
+| `recover --target <p> --target-ledger-api <host:port> --loader-participant <console> --policy-id <id> --endpoints <url,...> --k <n>` | The main event: re-authorizes the party's identity on `--target` (propose/sign/load a topology transaction via Interactive Submission), reconstructs the encryption key from k shares, decrypts and imports the ACS. An unreachable custodian is skipped and the next listed endpoint is tried; if fewer than k shares arrive, it fails with a clear message. Note: with the demo's endpoints (two custodians, k=2) there is no spare, so one custodian down means no recovery. |
 | `recover-identity --policy-id <id> --endpoints <url,...> --k <n> --custodian-participant <p> --custodian <hint> [--key-path <path>]` | Rebuilds *only* the identity key from its own Shamir shares (a separate disaster: the key file itself was lost, not the whole node) — verifies the reconstructed key against a custodian's own ledger view before trusting it. |
 | `counterparty-tx --as <custodian-hint> --participant <p> --owner-participant <host:port> [--label <text>]` | The closing proof: a counterparty proposes a contract naming the recovered `owner` as observer, then `owner` exercises the acceptance themselves via Interactive Submission from `--owner-participant` (wherever they're currently hosted) — the result's sole signatory is genuinely `owner`, not just an observer. |
 | `request-recovery --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | Owner formally asks a custodian to hand back its share (on-ledger `RecoveryRequest`) — distinct from just calling `recover` directly. |
 | `respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | The named custodian answers an open `RecoveryRequest`. |
-| `check-commitment --counterparty-participant <console> --about-participant <console>` | Shows the real ACS commitments two participants independently computed and matched — the "proof the state is correct" half of the pitch, works on the pre-disaster topology at any time. |
+| `check-commitment --counterparty-participant <console> --about-participant <console>` | Shows the real ACS commitments two participants independently computed and matched — works on the pre-disaster topology at any time. Prints Canton's result; it does not assert `Match`, and it is not part of `recover` (see the root README's limitations). |
 | `backup --source <p> --party <hint> --out <path>` / `restore --target <p> --in <path>` | Raw `repair.export_acs`/`import_acs`, scoped to one party — the low-level primitive `distribute`/`recover` build on. |
 | `serve --port <port>` | Starts a custodian's own blob/share HTTP store (what `agent1/2/3` run). |
 | `dashboard --port <port> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --recover-target <p> --recover-target-ledger-api <host:port> --recover-endpoints <url,...> --recover-loader-participant <console> --counterparty-tx-as <custodian-hint> --counterparty-tx-participant <host:port>` | Starts the owner-facing read API + recovery trigger the UI talks to. `--counterparty-tx-*` fixes who plays "the counterparty" for `POST /counterparty-tx` — not trusted from the request body, same reasoning as `--recover-target`. |
@@ -192,6 +183,9 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
 
 ## Makefile targets
 
+- **`make build-dar`** — builds the Daml model into a DAR (`daml/build-dar.sh`), using `dpm`/`damlc`
+  from `PATH` if present, otherwise downloading `dpm` into `daml/.dpm-cache/`. Run once after
+  cloning, and after any change to `daml/*.daml` (bump `version` in `daml/daml.yaml` first).
 - **`make rebuild`** — the one command to run after editing anything in `agent/src/`. All six
   agent-based docker-compose services (`agent`, `agent1/2/3`, `dashboard`, `seed`) share a single
   image tag, so this rebuilds all of them at once — there's no way for one to be stale while

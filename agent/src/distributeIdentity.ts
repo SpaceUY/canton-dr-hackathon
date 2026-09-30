@@ -5,7 +5,7 @@ export interface DistributeIdentityOptions {
   keyPath: string;
   policyId: string;
   // Ordered — endpoints[i] gets shares[i]. Same custodian network the data
-  // key already uses (ADR-005 in the vault: one network, two independent
+  // key already uses (ADR-005 in docs/DECISIONS.md: one network, two independent
   // sets of fragments), stored under a distinct path (identity-share, not
   // share) so the two secrets never mix on the wire or on disk.
   endpoints: string[];

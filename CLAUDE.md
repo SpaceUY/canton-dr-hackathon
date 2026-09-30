@@ -12,6 +12,12 @@ this repo's now-frozen `spikes/external-party/FINDINGS.md`). The vault's old fla
 `FINDINGS.md` are now redirect stubs — don't read them expecting current content. Check the vault
 before assuming this file alone is current.
 
+**The vault is internal — hackathon judges see only this repo.** Anything a reviewer needs
+(design rationale, limitations, demo flow) must live in this repo, in English: `README.md`
+(overview, what's real vs not, known limitations), `docs/DECISIONS.md` (ADR summaries),
+`docs/README.md` (run guide and reference). When a decision or limitation changes in the vault,
+update those too.
+
 ## The problem
 
 Canton prioritizes strict privacy: each participant keeps its data's state
@@ -31,12 +37,15 @@ the key.
 
 Canton is NOT used as storage, but as a coordination and audit layer: a Daml
 contract registers the custodians and the policy, and periodically challenges them to prove
-they still hold their fragment, so a degraded backup gets detected and re-replicated
-before disaster strikes.
+they still hold their fragment, so a degraded backup gets detected before disaster strikes.
+(Today the challenge response is recorded but not verified, and nothing re-replicates
+automatically — both are declared limitations in `README.md`.)
 
-On recovery, the reconstructed ACS is validated against the ACS commitments the network already
-exchanges between counterparties: cryptographic proof that the state is correct, without
-trusting whoever held the backup.
+ACS commitments — the hashes counterparties already exchange about their shared state — show
+that two independent nodes agree on that state (`agent check-commitment`, real `Match` results).
+They are **not** part of the `recover` pipeline: the recovery target is a different participant
+with no commitment history, and the command doesn't assert `Match`. Don't claim that the
+recovered state is automatically validated against commitments.
 
 **One-line idea:** the network doesn't store your data, it stores the proof that your data is
 recoverable and correct.
@@ -59,17 +68,19 @@ recoverable and correct.
   and re-hosted its external party on a different, live participant using only a signature
   from the party's own externally-held key — the dead participant was never involved. This
   is a decision, not an open question — don't re-litigate it back to out-of-scope either.
-  See `~/Downloads/ROADMAP.md`'s Priority 1 for the remaining integration work
-  (`spikes/external-party/` has the verified spike scripts).
+  Integrated end to end in the real pipeline since 2026-09-28 (`agent/src/rehostParty.ts`,
+  wired into `recover`); `spikes/external-party/` keeps the original spike scripts.
 - **The identity key is protected by the same Shamir k-of-n scheme as the encryption
   key, as independent fragments.** One custodian network, two things it protects. Recovering
   the identity key must never depend on anything only readable with the identity already
   recovered — that circular dependency defeats the whole point.
-- **Communication rule for the identity-recovery work**: until it runs end-to-end against
-  real ACS state (not just a party with nothing to move), describe it as "mechanism
-  confirmed against the real binary, integration in progress" — never as "the node
-  resurrects." The spike had no state to move; don't let that distinction blur in status
-  updates or the pitch.
+- **Communication rule for the identity-recovery work**: the original "mechanism confirmed,
+  integration in progress" wording was satisfied on 2026-09-28 (identity + state + a
+  counterparty transacting, all in the real pipeline). Two precisions still apply: what's
+  re-hosted is an **external party** onto a different participant (not the dead participant's
+  own node identity), and until `recover` reconstructs the identity key from its Shamir shares
+  (planned — today it reads the key file from the owner-side volume), don't claim the demo
+  recovers the identity key from the custodians.
 
 ## Known limitations (state them, don't hide them)
 
@@ -77,8 +88,11 @@ recoverable and correct.
 - Without a prior backup, nothing gets reconstructed from scratch.
 - After a disaster, the node's own commitment history is lost: verification requires
   asking the counterparty for the commitment it saved. It's not a local operation.
-- The exact names of the commitment commands change between Canton 2.x and 3.x.
-  Confirm the hackathon's version before committing to that part of the demo.
+- The exact names of the commitment commands change between Canton 2.x and 3.x — confirmed
+  for Canton 3.5.18 (see `infra/README.md`, step 6).
+- The full, current list (custodian store unauthenticated, challenge not verified, no
+  re-replication, no tolerance for a custodian outage with k=2 and two third-party custodians)
+  lives in `README.md`'s "Known limitations" — keep the two in sync.
 
 ## Architecture
 
@@ -99,8 +113,10 @@ Three pieces:
 ```
 /daml        contract model
 /agent       the per-node service
+/ui          the dashboard (Vite + React)
 /infra       docker-compose, node configs
-/docs        README, diagram, pitch
+/docs        run guide (README.md), design decisions (DECISIONS.md), build checklist
+/spikes      frozen proof-of-mechanism scripts (historical)
 ```
 
 ## Work plan
@@ -123,8 +139,11 @@ fraction of the work, finishable.
 
 ## Demo (5 minutes)
 
-3 nodes. One loses its base. Recovers with 2 of 3 fragments. Validates against the commitment.
-Shows that the custodian only ever saw ciphertext.
+`participant1` is destroyed (container + disk). The dashboard shows the custodian only ever held
+ciphertext. Recover: the owner's identity is re-authorized on `participant4`, the key is rebuilt
+from the 2 independent custodians' shares (the owner's own copy is skipped on purpose), the state
+is imported. Close: a counterparty proposes a contract and the recovered owner signs it itself.
+Beat-by-beat version with measured timings: `README.md`'s demo section.
 
 The node that dies is always `participant1` — that's what the run guide's recovery flow
 targets. Kill it from a terminal with a script, not from a dashboard button: the dashboard is
@@ -135,7 +154,7 @@ purpose. This same rule applies to any future "destroy node" demo enhancement.
 `participant1` persists to disk (H2), by design, not memory — so the destruction step is
 stop + remove the container, then `docker volume rm infra_participant1_data`, not just
 `docker stop`. This is also more honest: a real disaster loses or corrupts the disk, it
-doesn't just crash the process. See `docs/DEMO_SCRIPT_SKELETON.md` for the exact command.
+doesn't just crash the process. See `docs/README.md` ("Running the demo end to end") for the exact command.
 
 ## References
 

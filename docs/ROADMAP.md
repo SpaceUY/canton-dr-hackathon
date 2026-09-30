@@ -1,8 +1,13 @@
-# Roadmap — canton-dr
+# Roadmap — canton-dr (original build checklist)
+
+> **Historical.** This is the checklist for the original 7-step plan, kept as a record of how the
+> vertical slice was built and what was found at each step. It predates identity recovery, which
+> became in scope on 2026-09-23 and is now wired into `recover`. For the current state (what's real,
+> what isn't, known limitations) see the [root README](../README.md); for design rationale see
+> [DECISIONS.md](DECISIONS.md).
 
 Checklist for the vertical slice up to the demo, based on the "Work plan"
-in `../CLAUDE.md`. Check items off as they're completed. If scope changes,
-adjust it here and leave the reason as a comment in the commit.
+in `../CLAUDE.md`.
 
 ## 0. Repo + Daml/Canton template + docker-compose
 
@@ -237,10 +242,12 @@ origin, so nothing except a real click was going to surface this one.
 
 ## Demo (5 minutes)
 
-- [ ] Script: 3 nodes, one loses its base, recovers with 2 of 3 fragments,
-      validates against the commitment, shows that the custodian only ever
-      saw ciphertext
-- [ ] Timed rehearsal
+- [x] Script — final version closes with a counterparty transacting with the
+      recovered party instead of "validates against the commitment" (the
+      commitment check isn't part of recovery; see the root README's
+      limitations). Beat-by-beat in the root README.
+- [x] Timed rehearsal — full run 2026-09-30, 2:58 of technical time
+      (destroy → recover → close)
 
 ## Plan B (if time runs short)
 
