@@ -1,4 +1,14 @@
-.PHONY: rebuild demo-reset
+.PHONY: build-dar rebuild demo-reset
+
+# Builds the DAR without assuming dpm/damlc is on PATH — see
+# daml/build-dar.sh. Uses either one if already installed; otherwise
+# downloads dpm's own binary into daml/.dpm-cache/ (gitignored, not
+# installed system-wide) and builds with that. Run this once after
+# cloning, and again any time daml/*.daml changes (bump `version` in
+# daml/daml.yaml first — Canton refuses to vet two different-content
+# packages under the same name+version).
+build-dar:
+	cd daml && ./build-dar.sh
 
 # The one command to run after editing anything in agent/src, before
 # testing with `docker compose run`/`up` again. agent, agent1, agent2,
