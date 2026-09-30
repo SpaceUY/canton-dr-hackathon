@@ -5,8 +5,10 @@ import {
   fetchPositions,
   fetchRecoverProgress,
   fetchStatus,
+  triggerCounterpartyTx,
   triggerRecover,
   type CiphertextSample,
+  type CounterpartyTxResult,
   type PositionView,
   type RecoverEvent,
   type StatusView,
@@ -57,6 +59,17 @@ function parseRecoverResult(raw: string, totalFragments: string): string | null 
   return `Reconstructed the key from ${used} of ${totalFragments} fragments and restored the state onto ${target}.`;
 }
 
+// Canton's own error strings can run to hundreds of characters of nested
+// JSON (correlationId, traceId, context...) — useful detail, but not as the
+// only thing on screen. Cut at the first brace/newline so the visible line
+// stays short; the full string is still available (see the "Full error"
+// details below it), nothing is lost, just not shown twice.
+function summarizeError(message: string): string {
+  const cut = message.search(/[{\n]/);
+  const short = cut === -1 ? message : message.slice(0, cut).trim();
+  return short.length > 0 ? short : message.slice(0, 140);
+}
+
 interface RecoverOutcome {
   kind: "success" | "error";
   summary: string;
@@ -76,6 +89,10 @@ export function App() {
   const [recoverStartedAt, setRecoverStartedAt] = useState<number | null>(null);
   const [recoverEndedAt, setRecoverEndedAt] = useState<number | null>(null);
   const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [counterpartyTxRunning, setCounterpartyTxRunning] = useState(false);
+  const [counterpartyTxResult, setCounterpartyTxResult] = useState<CounterpartyTxResult | null>(null);
+  const [counterpartyTxError, setCounterpartyTxError] = useState<string | null>(null);
 
   const { revealed, finished } = usePacedEvents(recoverProgress);
 
@@ -163,6 +180,24 @@ export function App() {
   // Opened as a Blob URL in a new tab, not downloaded directly — a jury
   // member reads it there and prints/saves as PDF (Cmd/Ctrl+P) themselves;
   // no backend endpoint, it's built entirely from data already on screen.
+  // The demo's closing step, run from the dashboard instead of a terminal —
+  // real command, real ledger data back (agent/src/counterpartyTx.ts): a
+  // real counterparty proposes a contract naming the (possibly just-
+  // recovered) owner as observer, and the owner then signs the acceptance
+  // themselves, becoming the new Record's sole signatory.
+  const handleCounterpartyTx = async () => {
+    setCounterpartyTxRunning(true);
+    setCounterpartyTxResult(null);
+    setCounterpartyTxError(null);
+    try {
+      setCounterpartyTxResult(await triggerCounterpartyTx());
+    } catch (err) {
+      setCounterpartyTxError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCounterpartyTxRunning(false);
+    }
+  };
+
   const handleDownloadReport = () => {
     if (status === null) return;
     const html = buildRecoverabilityReportHtml(status, positions);
@@ -195,6 +230,7 @@ export function App() {
             custodians={status.custodians}
             positions={positions}
             timer={{ startedAt: recoverStartedAt, endedAt: recoverEndedAt }}
+            lastDistributedAt={status.lastDistributedAt}
           />
 
           <div className="dashboard-columns">
@@ -237,6 +273,39 @@ export function App() {
               <button className="report-button" onClick={handleDownloadReport}>
                 Download recoverability report
               </button>
+
+              <div className="counterparty-tx-block">
+                <button
+                  className="counterparty-tx-button"
+                  onClick={() => void handleCounterpartyTx()}
+                  disabled={counterpartyTxRunning || !succeeded}
+                  title={succeeded ? undefined : "Available after a successful recovery"}
+                >
+                  {counterpartyTxRunning ? "Transacting…" : "Counterparty transacts with recovered owner"}
+                </button>
+
+                {counterpartyTxResult !== null && (
+                  <div className="counterparty-tx-outcome counterparty-tx-success">
+                    <p>
+                      Contract <code>{counterpartyTxResult.recordContractId}</code> is active on{" "}
+                      {counterpartyTxResult.ownerParticipant}. {counterpartyTxResult.proposer.split("::")[0]}{" "}
+                      proposed it; {counterpartyTxResult.owner.split("::")[0]} signed the acceptance themselves and
+                      is its sole signatory.
+                    </p>
+                  </div>
+                )}
+                {counterpartyTxError !== null && (
+                  <div className="counterparty-tx-outcome counterparty-tx-error">
+                    <p>{summarizeError(counterpartyTxError)}</p>
+                    {counterpartyTxError.length > 140 && (
+                      <details className="counterparty-tx-error-details">
+                        <summary>Full error</summary>
+                        <pre className="counterparty-tx-error-raw">{counterpartyTxError}</pre>
+                      </details>
+                    )}
+                  </div>
+                )}
+              </div>
             </section>
           </div>
 

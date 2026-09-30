@@ -245,6 +245,10 @@ services:
         "http://agent1:4001,http://agent2:4002,http://agent3:4003",
         "--recover-loader-participant",
         "participant2",
+        "--counterparty-tx-as",
+        "custodian2",
+        "--counterparty-tx-participant",
+        "participant2:5023",
       ]
     volumes:
       - ./canton:/canton/user-config:ro

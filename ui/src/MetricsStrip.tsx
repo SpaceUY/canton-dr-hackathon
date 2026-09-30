@@ -28,9 +28,10 @@ export interface MetricsStripProps {
   custodians: CustodianView[];
   positions: PositionView[];
   timer: RecoveryTimerProps;
+  lastDistributedAt: string | null;
 }
 
-export function MetricsStrip({ k, n, custodians, positions, timer }: MetricsStripProps) {
+export function MetricsStrip({ k, n, custodians, positions, timer, lastDistributedAt }: MetricsStripProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -52,6 +53,10 @@ export function MetricsStrip({ k, n, custodians, positions, timer }: MetricsStri
       <Metric label="Custodians healthy" value={`${healthy}/${custodians.length}`} />
       <Metric label="Last challenge" value={lastChallenge !== undefined ? `${timeAgo(lastChallenge, now)} ago` : "—"} />
       <Metric label="Positions protected" value={String(positions.length)} />
+      <Metric
+        label="Backup freshness (RPO)"
+        value={lastDistributedAt !== null ? `${timeAgo(lastDistributedAt, now)} ago` : "—"}
+      />
       {timer.startedAt === null ? (
         <Metric label="Recovery time" value="—" />
       ) : (

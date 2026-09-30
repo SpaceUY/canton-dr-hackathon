@@ -30,7 +30,7 @@ function usage(): never {
       "--policy-id <id> --endpoints <url,url,...> --k <n>\n" +
       "  recover-identity --policy-id <id> --endpoints <url,url,...> --k <n> --custodian-participant <p> " +
       "--custodian <hint> [--key-path <path>]\n" +
-      "  counterparty-tx --as <custodian-hint> --participant <p> [--label <text>]\n" +
+      "  counterparty-tx --as <custodian-hint> --participant <p> --owner-participant <host:port> [--label <text>]\n" +
       "  create-policy  --owner-participant <p> --owner <hint> --custodian <participant:port:hint> [--custodian ...] " +
       "--k <n> --n <n> --frequency-hours <h> --policy-id <id>\n" +
       "  accept-custody --as <name> --participant <p> --custodian <hint> --owner-participant <p> --owner <hint> --policy-id <id>\n" +
@@ -47,7 +47,8 @@ function usage(): never {
       "  check-commitment --counterparty-participant <console-name> --about-participant <console-name>\n" +
       "  dashboard        --port <port> --custodian <participant:port:hint> [--custodian ...] --policy-id <id> " +
       "--recover-target <participant> --recover-target-ledger-api <host:port> --recover-endpoints <url,url,...> " +
-      "--recover-loader-participant <console>",
+      "--recover-loader-participant <console> --counterparty-tx-as <custodian-hint> " +
+      "--counterparty-tx-participant <host:port>",
   );
   process.exit(1);
 }
@@ -178,12 +179,15 @@ async function main(): Promise<void> {
   }
 
   if (command === "counterparty-tx") {
+    const result = await counterpartyTx({
+      as: flag(rest, "as"),
+      participant: flag(rest, "participant"),
+      ownerParticipant: flag(rest, "owner-participant"),
+      label: optionalFlag(rest, "label", "post-recovery-demo"),
+    });
     console.log(
-      await counterpartyTx({
-        as: flag(rest, "as"),
-        participant: flag(rest, "participant"),
-        label: optionalFlag(rest, "label", "post-recovery-demo"),
-      }),
+      `COUNTERPARTY_TX_OK: ${result.proposer} proposed, ${result.owner} accepted as sole signatory ` +
+        `(label '${result.label}') — Record ${result.recordContractId} active on ${result.ownerParticipant}`,
     );
     return;
   }
@@ -325,6 +329,8 @@ async function main(): Promise<void> {
       recoverEndpoints: endpointsFlag(rest, "recover-endpoints"),
       recoverTargetLedgerApi: flag(rest, "recover-target-ledger-api"),
       recoverLoaderParticipant: flag(rest, "recover-loader-participant"),
+      counterpartyTxAs: flag(rest, "counterparty-tx-as"),
+      counterpartyTxParticipant: flag(rest, "counterparty-tx-participant"),
     });
     return;
   }

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { counterpartyTx } from "./counterpartyTx.js";
 import type { CustodianRef } from "./createPolicy.js";
 import { queryActive, resolveParty, type ActiveContract } from "./ledger.js";
 import { loadExternalPartyIdentity } from "./externalParty.js";
@@ -50,6 +51,13 @@ export interface DashboardOptions {
   // signed re-hosting proposal during recovery (see rehostParty.ts) — fixed
   // at startup for the same reason recoverTarget/recoverEndpoints are.
   recoverLoaderParticipant: string;
+  // The demo's closing step (POST /counterparty-tx) — which real local
+  // party plays "the counterparty" and where it lives. Fixed at startup,
+  // not trusted from the request body, same reasoning as recoverTarget
+  // above: an unauthenticated endpoint must never take its actor identity
+  // from the caller.
+  counterpartyTxAs: string;
+  counterpartyTxParticipant: string;
 }
 
 type CustodianStatus =
@@ -74,6 +82,12 @@ interface StatusView {
   n: string;
   frequencyHours: string;
   custodians: CustodianView[];
+  // RPO signal: the oldest blob.enc mtime across the real (non-self-copy)
+  // custodians — the worst case, not the best one, since that's the
+  // custodian a real recovery would actually be depending on if it were
+  // the slowest to get refreshed. null only if no custodian could be
+  // reached at all.
+  lastDistributedAt: string | null;
 }
 
 interface PositionView {
@@ -96,6 +110,8 @@ export function startDashboard(options: DashboardOptions): void {
     recoverEndpoints,
     recoverTargetLedgerApi,
     recoverLoaderParticipant,
+    counterpartyTxAs,
+    counterpartyTxParticipant,
   } = options;
 
   const server = createServer((req, res) => {
@@ -108,6 +124,8 @@ export function startDashboard(options: DashboardOptions): void {
       recoverEndpoints,
       recoverTargetLedgerApi,
       recoverLoaderParticipant,
+      counterpartyTxAs,
+      counterpartyTxParticipant,
     );
   });
 
@@ -125,6 +143,8 @@ async function handle(
   recoverEndpoints: string[],
   recoverTargetLedgerApi: string,
   recoverLoaderParticipant: string,
+  counterpartyTxAs: string,
+  counterpartyTxParticipant: string,
 ): Promise<void> {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
@@ -137,7 +157,7 @@ async function handle(
 
   try {
     if (req.method === "GET" && req.url === "/status") {
-      const status = await getStatus(statusCustodians, policyId);
+      const status = await getStatus(statusCustodians, policyId, recoverEndpoints);
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(status));
       return;
     }
@@ -191,6 +211,22 @@ async function handle(
         },
       });
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ result }));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/counterparty-tx") {
+      // Zero client-trusted input: actor, participant and target are all
+      // fixed at dashboard startup (see counterpartyTxAs/counterpartyTxParticipant
+      // above) — only the label varies, and it's generated here, never
+      // taken from the request body, so two clicks can never collide.
+      const label = `post-recovery-demo-${Date.now()}`;
+      const result = await counterpartyTx({
+        as: counterpartyTxAs,
+        participant: counterpartyTxParticipant,
+        ownerParticipant: recoverTargetLedgerApi,
+        label,
+      });
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
       return;
     }
 
@@ -304,7 +340,34 @@ async function getCiphertextSample(recoverEndpoints: string[], policyId: string)
   };
 }
 
-async function getStatus(statusCustodians: CustodianRef[], policyId: string): Promise<StatusView> {
+// recoverEndpoints[0] is agent1 — owner's own self-custody copy, never used
+// by a real recovery (see getCiphertextSample's own comment) — so it's
+// excluded here too: what matters for RPO is how stale the custodians an
+// actual recovery would depend on are, not the owner's own spare.
+async function getBackupFreshness(recoverEndpoints: string[], policyId: string): Promise<string | null> {
+  const custodianEndpoints = recoverEndpoints.slice(1);
+  const mtimes: number[] = [];
+  for (const endpoint of custodianEndpoints) {
+    try {
+      const res = await fetch(`${endpoint}/custody/${policyId}/blob/meta`);
+      if (!res.ok) continue;
+      const body = (await res.json()) as { blobMtime?: string };
+      if (body.blobMtime !== undefined) mtimes.push(new Date(body.blobMtime).getTime());
+    } catch {
+      // Unreachable custodian: skip it for this metric, same "don't let one
+      // dead endpoint take down the whole read" rule as the rest of the
+      // dashboard's status queries.
+    }
+  }
+  if (mtimes.length === 0) return null;
+  return new Date(Math.min(...mtimes)).toISOString();
+}
+
+async function getStatus(
+  statusCustodians: CustodianRef[],
+  policyId: string,
+  recoverEndpoints: string[],
+): Promise<StatusView> {
   const owner = (await loadExternalPartyIdentity(OWNER_KEY_PATH)).partyId;
   if (statusCustodians.length === 0) throw new Error("no custodians configured for status queries");
 
@@ -381,5 +444,6 @@ async function getStatus(statusCustodians: CustodianRef[], policyId: string): Pr
     n: String(policy.payload["n"]),
     frequencyHours: String(policy.payload["frequencyHours"]),
     custodians: custodianViews,
+    lastDistributedAt: await getBackupFreshness(recoverEndpoints, policyId),
   };
 }

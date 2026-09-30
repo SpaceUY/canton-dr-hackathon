@@ -18,6 +18,7 @@ export interface StatusView {
   n: string;
   frequencyHours: string;
   custodians: CustodianView[];
+  lastDistributedAt: string | null;
 }
 
 export async function fetchParticipant1Alive(): Promise<boolean> {
@@ -116,4 +117,24 @@ export async function fetchRecoverProgress(): Promise<RecoverEvent[]> {
   const body = (await res.json()) as { events?: RecoverEvent[] };
   if (!res.ok) return [];
   return body.events ?? [];
+}
+
+// The demo's closing step: a real counterparty proposes a Record naming the
+// (possibly just-recovered) owner as observer, and the owner then signs the
+// acceptance themselves — the returned ids/parties are real ledger data,
+// not derived client-side.
+export interface CounterpartyTxResult {
+  proposalContractId: string;
+  recordContractId: string;
+  proposer: string;
+  owner: string;
+  label: string;
+  ownerParticipant: string;
+}
+
+export async function triggerCounterpartyTx(): Promise<CounterpartyTxResult> {
+  const res = await fetch(`${API_URL}/counterparty-tx`, { method: "POST" });
+  const body = (await res.json()) as CounterpartyTxResult & { error?: string };
+  if (!res.ok) throw new Error(body.error ?? `POST /counterparty-tx failed: ${res.status}`);
+  return body;
 }

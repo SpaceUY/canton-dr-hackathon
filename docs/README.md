@@ -91,12 +91,17 @@ threshold among independent parties, not on the owner's own spare copy. Typical 
 party is already re-hosted (idempotent), ~40-100s for a genuinely fresh re-authorization, depending
 on host load — see the vault's rehearsal notes for measured ranges.
 
-**3. Close the loop** — prove a counterparty can transact with the recovered party with zero special
-handling:
+**3. Close the loop** — prove a counterparty can transact with the recovered party, and that the
+recovered party genuinely signs for itself. Click "Counterparty transacts with recovered owner" in
+the dashboard UI (enabled once step 2 succeeds) — it drives the same real flow the CLI does: a
+counterparty (`custodian2`) proposes a new contract naming the recovered owner as observer, then the
+owner exercises the acceptance themselves, via Interactive Submission from wherever they're
+currently hosted (`participant4`, post-recovery). The resulting contract's sole signatory is
+genuinely the recovered owner — not just an observer named by someone else. From the CLI instead:
 
 ```sh
 docker compose run --rm agent counterparty-tx --as custodian2 --participant participant2:5023 \
-  --label post-recovery-demo
+  --owner-participant participant4:5043 --label post-recovery-demo
 ```
 
 ## Manual step-by-step setup
@@ -161,25 +166,26 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
 | `challenge-loop --owner-participant <p> --owner <hint> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --interval-seconds <n>` | Runs `challenge` on a timer against every listed custodian (long-running). |
 | `recover --target <p> --target-ledger-api <host:port> --loader-participant <console> --policy-id <id> --endpoints <url,...> --k <n>` | The main event: re-authorizes the party's identity on `--target` (propose/sign/load a topology transaction via Interactive Submission), reconstructs the encryption key from k shares, decrypts and imports the ACS. Degrades gracefully if a queried custodian is genuinely unreachable — skips it and tries the next, succeeding if enough others respond, failing with a clear message otherwise. |
 | `recover-identity --policy-id <id> --endpoints <url,...> --k <n> --custodian-participant <p> --custodian <hint> [--key-path <path>]` | Rebuilds *only* the identity key from its own Shamir shares (a separate disaster: the key file itself was lost, not the whole node) — verifies the reconstructed key against a custodian's own ledger view before trusting it. |
-| `counterparty-tx --as <custodian-hint> --participant <p> [--label <text>]` | The closing proof: an ordinary counterparty creates a brand-new contract naming the recovered `owner` as observer, with zero special re-onboarding. Resolves both party ids itself. |
+| `counterparty-tx --as <custodian-hint> --participant <p> --owner-participant <host:port> [--label <text>]` | The closing proof: a counterparty proposes a contract naming the recovered `owner` as observer, then `owner` exercises the acceptance themselves via Interactive Submission from `--owner-participant` (wherever they're currently hosted) — the result's sole signatory is genuinely `owner`, not just an observer. |
 | `request-recovery --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | Owner formally asks a custodian to hand back its share (on-ledger `RecoveryRequest`) — distinct from just calling `recover` directly. |
 | `respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | The named custodian answers an open `RecoveryRequest`. |
 | `check-commitment --counterparty-participant <console> --about-participant <console>` | Shows the real ACS commitments two participants independently computed and matched — the "proof the state is correct" half of the pitch, works on the pre-disaster topology at any time. |
 | `backup --source <p> --party <hint> --out <path>` / `restore --target <p> --in <path>` | Raw `repair.export_acs`/`import_acs`, scoped to one party — the low-level primitive `distribute`/`recover` build on. |
 | `serve --port <port>` | Starts a custodian's own blob/share HTTP store (what `agent1/2/3` run). |
-| `dashboard --port <port> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --recover-target <p> --recover-target-ledger-api <host:port> --recover-endpoints <url,...> --recover-loader-participant <console>` | Starts the owner-facing read API + recovery trigger the UI talks to. |
+| `dashboard --port <port> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --recover-target <p> --recover-target-ledger-api <host:port> --recover-endpoints <url,...> --recover-loader-participant <console> --counterparty-tx-as <custodian-hint> --counterparty-tx-participant <host:port>` | Starts the owner-facing read API + recovery trigger the UI talks to. `--counterparty-tx-*` fixes who plays "the counterparty" for `POST /counterparty-tx` — not trusted from the request body, same reasoning as `--recover-target`. |
 | `verify-demo-state` | No args. Fails loudly, naming exactly what's wrong, unless the environment is genuinely a fresh pre-disaster state (owner alive+hosted on `participant1`, not yet on `participant4`, policy/custody/challenges/positions all real and current). |
 
 ## Dashboard HTTP API (`http://localhost:4010`, no auth — trusted local network only)
 
 | Endpoint | Returns |
 |---|---|
-| `GET /status` | Policy id, k/n, and each custodian's real on-chain status (custody accepted, open challenges, last response, derived status). |
+| `GET /status` | Policy id, k/n, each custodian's real on-chain status (custody accepted, open challenges, last response, derived status), and `lastDistributedAt` — the oldest `blob.enc` mtime across the real custodians (the RPO signal: how long ago the worst-case custodian was last refreshed). |
 | `GET /positions` | The 3 real `Position` contracts (counterparty, signed amount, currency). |
 | `GET /ciphertext` | Real encrypted bytes fetched live from an actual custodian's own volume. |
 | `GET /participant1-status` | `{alive: boolean}` — real reachability check, not a scripted state. |
 | `GET /recover-progress` | The current recovery's real event stream (rehost sub-steps, custodian query/response, the 3 milestones), reset at the start of every `POST /recover`. |
 | `POST /recover` `{targetParticipant, endpoints, k}` | Triggers `recover()` for real; `targetParticipant`/`endpoints` are validated against the fixed values the dashboard was started with, not trusted blindly from the request body. |
+| `POST /counterparty-tx` (no body) | Triggers the demo's closing proof: the fixed counterparty proposes a contract naming the recovered owner as observer, then the owner signs the acceptance themselves. Zero client-trusted input — actor and participant are fixed at dashboard startup, only the label varies (auto-generated). Returns the real proposal/record contract ids and party ids. |
 
 ## Makefile targets
 
