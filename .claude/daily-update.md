@@ -1,3 +1,17 @@
+Date: 2026-09-30
+Developer: tomascmk
+
+- Ensayo completo de punta a punta del guión final con la UI nueva, cronometrado bloque por bloque:
+  **entra en 5 minutos con margen** — 2:58 de tiempo técnico real de punta a punta (destruir →
+  recuperar → cerrar), casi 2 minutos por debajo del objetivo.
+- El único bloque ajustado es la recuperación (99 de 115s asignados) — sigue entrando. Dentro de
+  eso, la sub-etapa "proponer" sola tardó ~48-50s sin explicación clara (no fue la contención de
+  CPU de ayer, esa vez la carga estaba normal) — anotado como hallazgo abierto, no investigado más
+  a fondo ni tocado código (pedido explícito: sin features nuevas esta ronda).
+- Reset transitorio de bootstrap una vez más (ya documentado como punto de falla conocido) —
+  reintentar resolvió sin tocar nada.
+
+---
 Date: 2026-09-29
 Developer: tomascmk
 
