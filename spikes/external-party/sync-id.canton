@@ -1,0 +1,2 @@
+val id = participant2.synchronizers.id_of("da")
+println(s"SYNC_ID_FULL: ${id.toProtoPrimitive}")

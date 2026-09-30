@@ -1,0 +1,267 @@
+services:
+  synchronizer:
+    build: .
+    hostname: synchronizer
+    command: ["daemon", "-c", "/canton/user-config/synchronizer.conf,/canton/user-config/features.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "5001:5001"
+      - "5002:5002"
+      - "5202:5202"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5002)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  participant1:
+    build: .
+    hostname: participant1
+    command: ["daemon", "-c", "/canton/user-config/participant1.conf,/canton/user-config/features.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - participant1_data:/canton/data # persistent by design, see participant1.conf
+    ports:
+      - "5011:5011"
+      - "5012:5012"
+      - "5013:5013"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5012)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  participant2:
+    build: .
+    hostname: participant2
+    command: ["daemon", "-c", "/canton/user-config/participant2.conf,/canton/user-config/features.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "5021:5021"
+      - "5022:5022"
+      - "5023:5023"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5022)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  participant3:
+    build: .
+    hostname: participant3
+    command: ["daemon", "-c", "/canton/user-config/participant3.conf,/canton/user-config/features.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+    ports:
+      - "5031:5031"
+      - "5032:5032"
+      - "5033:5033"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5032)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # The recovery target: needs DB-backed storage, not memory (repair.import_acs
+  # refuses memory storage — see "Step 2 findings" in README.md). Its own named
+  # volume, separate from every other node and from `agent`'s.
+  participant4:
+    build: .
+    hostname: participant4
+    command: ["daemon", "-c", "/canton/user-config/participant4.conf,/canton/user-config/features.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - participant4_data:/canton/data
+    ports:
+      - "5041:5041"
+      - "5042:5042"
+      - "5043:5043"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/5042)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # One-shot: wires the 3 participants up to the synchronizer, pings between
+  # them as a smoke test, then exits. Re-run with:
+  #   docker compose run --rm bootstrap
+  bootstrap:
+    build: .
+    command: ["run", "/canton/user-config/bootstrap.canton", "-c", "/canton/user-config/bootstrap-remote.conf", "--no-tty"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - ../daml/.daml/dist:/canton/dars:ro
+    depends_on:
+      synchronizer:
+        condition: service_healthy
+      participant1:
+        condition: service_healthy
+      participant2:
+        condition: service_healthy
+      participant3:
+        condition: service_healthy
+      participant4:
+        condition: service_healthy
+    restart: "no"
+
+  # One-shot: allocates owner/custodian2/custodian3 parties and creates a
+  # Record contract visible on all 3 participants. Requires `bootstrap` to
+  # have run first (needs the DAR uploaded). Re-run with:
+  #   docker compose run --rm seed
+  # `owner` is an external party (see agent/src/seed.ts and
+  # docs/ROADMAP-equivalent notes) — its signing key can't live inside
+  # any participant, so seeding moved from bash+curl to this TypeScript
+  # command, which can actually sign owner's own transactions.
+  seed:
+    build: ../agent
+    image: canton-dr-agent:latest
+    command: ["seed"]
+    volumes:
+      - owner_identity:/canton/identity
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # `agentN` is the custodian side only: the long-running `serve` HTTP
+  # server that stores/returns blob+share for a policy. Deliberately NOT
+  # also used to run CLI commands — `docker compose run agent1 ...` starts
+  # a *second*, separate container that shares the "agent1" DNS alias with
+  # the already-running server, and Docker's embedded DNS resolved
+  # self-pushes (an owner endpoint distributing to itself) to that
+  # ephemeral, server-less container instead — ECONNREFUSED. Run every
+  # command (including ones that target agent1/2/3 as endpoints) from the
+  # separate `agent` service below instead.
+  agent1:
+    build: ../agent
+    image: canton-dr-agent:latest
+    hostname: agent1
+    command: ["serve", "--port", "4001"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+      - agent1_custody:/canton/custody
+    ports:
+      - "4001:4001"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4001)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  agent2:
+    build: ../agent
+    image: canton-dr-agent:latest
+    hostname: agent2
+    command: ["serve", "--port", "4002"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+      - agent2_custody:/canton/custody
+    ports:
+      - "4002:4002"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4002)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  agent3:
+    build: ../agent
+    image: canton-dr-agent:latest
+    hostname: agent3
+    command: ["serve", "--port", "4003"]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+      - agent3_custody:/canton/custody
+    ports:
+      - "4003:4003"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4003)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # The CLI runner — no hostname, not an endpoint anyone pushes to or
+  # fetches from, so it can't collide with agent1/2/3's own alias. Invoke
+  # ad hoc:
+  #   docker compose run --rm agent backup --source participant1 --party owner --out /canton/exports/owner_acs.gz
+  #   docker compose run --rm agent restore --target participant4 --in /canton/exports/owner_acs.gz
+  #   docker compose run --rm agent distribute --source participant1 --party owner --policy-id demo \
+  #     --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
+  #   docker compose run --rm agent recover --target participant4 --policy-id demo \
+  #     --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
+  #
+  # Step 5 (accept-custody, respond) reads a share/blob straight out of the
+  # relevant agentN's custody volume via --as agentN — read-only, since only
+  # that agentN's own `serve` process should ever write there.
+  #   docker compose run --rm agent create-policy --owner-participant participant1:5013 --owner owner \
+  #     --custodian participant2:5023:custodian2 --custodian participant3:5033:custodian3 \
+  #     --k 2 --n 3 --frequency-hours 1 --policy-id demo
+  #   docker compose run --rm agent accept-custody --as agent2 --participant participant2:5023 --custodian custodian2 \
+  #     --owner-participant participant1:5013 --owner owner --policy-id demo
+  #   docker compose run --rm agent challenge --owner-participant participant1:5013 --owner owner \
+  #     --custodian-participant participant2:5023 --custodian custodian2 --policy-id demo --challenge-id ch-1
+  #   docker compose run --rm agent respond --as agent2 --participant participant2:5023 --custodian custodian2 \
+  #     --policy-id demo --challenge-id ch-1
+  agent:
+    build: ../agent
+    image: canton-dr-agent:latest
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - agent_exports:/canton/exports
+      - agent1_custody:/canton/custody/agent1:ro
+      - agent2_custody:/canton/custody/agent2:ro
+      - agent3_custody:/canton/custody/agent3:ro
+      - owner_identity:/canton/identity
+
+  # Plan step 7: owner-facing read API + recovery trigger for ui/. Not an
+  # endpoint any other agent pushes to, so — unlike agent1/2/3 — running it
+  # long-lived has no DNS-alias collision risk from also using `agent` for
+  # ad hoc commands.
+  dashboard:
+    build: ../agent
+    image: canton-dr-agent:latest
+    hostname: dashboard
+    command:
+      [
+        "dashboard",
+        "--port",
+        "4010",
+        "--custodian",
+        "participant2:5023:custodian2",
+        "--custodian",
+        "participant3:5033:custodian3",
+        "--policy-id",
+        "demo",
+        "--recover-target",
+        "participant4",
+        "--recover-target-ledger-api",
+        "participant4:5043",
+        "--recover-endpoints",
+        "http://agent1:4001,http://agent2:4002,http://agent3:4003",
+        "--recover-loader-participant",
+        "participant2",
+      ]
+    volumes:
+      - ./canton:/canton/user-config:ro
+      - owner_identity:/canton/identity:ro
+    ports:
+      - "4010:4010"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '(exec 3<>/dev/tcp/127.0.0.1/4010)' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  participant1_data: # persistent by design, see participant1.conf — the demo kills it via volume rm
+  participant4_data:
+  owner_identity: # owner's external signing key — see agent/src/seed.ts
+  agent_exports:
+  agent1_custody:
+  agent2_custody:
+  agent3_custody:

@@ -1,0 +1,12 @@
+participant5.synchronizers.connect("da", "http://synchronizer:5001")
+utils.retry_until_true { participant5.synchronizers.active("da") }
+
+val darFile = new java.io.File("/canton/dars")
+  .listFiles()
+  .filter(_.getName.endsWith(".dar"))
+  .headOption
+  .getOrElse(sys.error("no .dar file found"))
+  .getAbsolutePath
+participant5.dars.upload(darFile)
+
+println("P5_CONNECT_OK")

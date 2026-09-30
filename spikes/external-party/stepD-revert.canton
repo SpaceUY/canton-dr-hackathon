@@ -1,0 +1,8 @@
+import com.digitalasset.canton.config.PositiveDurationSeconds
+
+sequencer1.topology.synchronizer_parameters.propose_update(
+  sequencer1.synchronizer_id,
+  _.update(reconciliationInterval = PositiveDurationSeconds.ofSeconds(60)),
+)
+
+println("RECONCILIATION_REVERT_OK")

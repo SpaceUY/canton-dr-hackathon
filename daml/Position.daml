@@ -1,0 +1,23 @@
+-- What a judge actually reads as "real state to lose" instead of an opaque
+-- contract id — same signatory/observer shape as Record (see Record.daml),
+-- richer fields. Recovered automatically by the existing pipeline: backup/
+-- restore operate on the whole ACS for a party (repair.export_acs/
+-- import_acs), not per-template, so nothing here needed its own recovery
+-- code — only its own seeding (agent/src/seed.ts) and its own read path
+-- (agent/src/positions.ts).
+module Position where
+
+template Position
+  with
+    owner : Party
+    custodians : [Party]
+    counterparty : Text
+    -- Positive: counterparty owes owner. Negative: owner owes counterparty.
+    -- One signed field reads cleanly either way in the UI, no separate
+    -- direction flag to keep in sync with the sign.
+    amount : Decimal
+    currency : Text
+    label : Text
+  where
+    signatory owner
+    observer custodians

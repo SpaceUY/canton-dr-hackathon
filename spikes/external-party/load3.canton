@@ -1,0 +1,34 @@
+import com.digitalasset.canton.topology.transaction.ParticipantPermission
+import com.digitalasset.canton.crypto.{Signature, SignatureFormat, SigningAlgorithmSpec, Fingerprint}
+
+val partyId = PartyId.tryFromProtoPrimitive("spike3::12204f9a74d1b38e0c356e301ea521cb1f8317f11582393533a98ba8d155766c5dc6")
+val synchronizerId = participant3.synchronizers.id_of("da")
+val proposal = participant3.topology.party_to_participant_mappings.propose_delta(
+  party = partyId,
+  adds = Seq((participant3.id, ParticipantPermission.Observation)),
+  store = synchronizerId,
+  requiresPartyToBeOnboarded = true,
+)
+
+val sigBytes = com.google.protobuf.ByteString.copyFrom(
+  java.util.Base64.getDecoder.decode("oLnWJXHKGWgsTBPjuiRpU8CjKx2F0FvRU9fcGz0V0d58EaSJn6a1nJkzSgjP3mXlwtQyXk3wxAX0wF0LngDtDg==")
+)
+val partySignature = Signature.fromExternalSigning(
+  format = SignatureFormat.Concat,
+  signature = sigBytes,
+  signedBy = Fingerprint.tryFromString("12204f9a74d1b38e0c356e301ea521cb1f8317f11582393533a98ba8d155766c5dc6"),
+  signingAlgorithmSpec = SigningAlgorithmSpec.Ed25519,
+)
+val proposalSignedByParty = proposal.addSingleSignature(partySignature)
+
+participant3.topology.transactions.load(
+  transactions = Seq(proposalSignedByParty),
+  store = synchronizerId,
+)
+
+println("LOAD_OK")
+
+val results = participant3.parties.list(filterParty = "spike3")
+results.foreach { r =>
+  println(s"PARTY: ${r.party} participants=${r.participants.map(_.participant).mkString(",")}")
+}

@@ -1,0 +1,38 @@
+// Manual proof for plan step 2: export a party's ACS from one participant
+// and import it into another via console repair commands. Run with:
+//   bin/canton run recover-test.canton -c bootstrap-remote.conf,features.conf
+//
+// Prerequisites this script does NOT set up for you (see ../README.md
+// "Step 2 findings"):
+//   - sourceParticipant/targetParticipant need
+//     `canton.features.enable-repair-commands = true` and
+//     `enable-testing-commands = true` in their own config, AND in whatever
+//     config this script itself is run with.
+//   - targetParticipant must use a database-backed store (H2 or Postgres) —
+//     `repair.import_acs` refuses `storage.type = memory`.
+val sourceParticipant = participant1
+val targetParticipant = participant4
+val partyHint = "owner"
+val exportFilePath = "/canton/exports/" + partyHint + "_acs.gz"
+
+val partyId = sourceParticipant.parties.list(filterParty = partyHint).headOption
+  .getOrElse(sys.error(s"party '$partyHint' not found on $sourceParticipant"))
+  .party
+val synchronizerId = sourceParticipant.synchronizers.id_of("da")
+val endOffset = sourceParticipant.ledger_api.state.end()
+
+sourceParticipant.repair.export_acs(
+  parties = Set(partyId),
+  ledgerOffset = endOffset,
+  exportFilePath = exportFilePath,
+)
+println(s"EXPORT_OK: $partyId as of offset $endOffset -> $exportFilePath")
+
+// import_acs rejects a participant still connected to the synchronizer.
+targetParticipant.synchronizers.disconnect("da")
+targetParticipant.repair.import_acs(
+  synchronizerId = synchronizerId,
+  importFilePath = exportFilePath,
+)
+targetParticipant.synchronizers.reconnect_all()
+println(s"IMPORT_OK: $partyId's contracts now readable on $targetParticipant")

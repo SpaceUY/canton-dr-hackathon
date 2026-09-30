@@ -1,0 +1,30 @@
+import com.digitalasset.canton.topology.transaction.{SignedTopologyTransaction, TopologyChangeOp, TopologyMapping}
+import com.digitalasset.canton.crypto.{Signature, SignatureFormat, SigningAlgorithmSpec, Fingerprint}
+import java.nio.file.{Files, Paths}
+
+val synchronizerId = participant2.synchronizers.id_of("da")
+
+val bytes = Files.readAllBytes(Paths.get("/spike/proposal5.bin"))
+val proposal = SignedTopologyTransaction
+  .fromTrustedByteArray(com.digitalasset.canton.version.ProtocolVersionValidation.NoValidation, bytes)
+  .fold(err => sys.error(s"deserialize failed: $err"), identity)
+
+println(s"P5_DESERIALIZED_OK: isProposal=${proposal.isProposal}")
+
+val sigBytes = com.google.protobuf.ByteString.copyFrom(
+  java.util.Base64.getDecoder.decode("qM67/qtjd2SCuOv90tAljwxMrutgc6ApInVHeaA7LgtpWaegbLSfmrRhU+S8aQr36jku9o601cfnNYlW0/0XAg==")
+)
+val partySignature = Signature.fromExternalSigning(
+  format = SignatureFormat.Concat,
+  signature = sigBytes,
+  signedBy = Fingerprint.tryFromString("122071913dc66644f65e0a4a1b15a4dc2dec2f9b1c6f9115a02c472201466352f27d"),
+  signingAlgorithmSpec = SigningAlgorithmSpec.Ed25519,
+)
+val proposalSignedByParty = proposal.addSingleSignature(partySignature)
+
+participant2.topology.transactions.load(
+  transactions = Seq(proposalSignedByParty),
+  store = synchronizerId,
+)
+
+println("P5_LOAD_OK")

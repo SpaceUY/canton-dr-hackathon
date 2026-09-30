@@ -1,0 +1,10 @@
+val partyId = PartyId.tryFromProtoPrimitive("spike5::122038c67f8e6e084656fa56114bbff5654db68901ba92153cc29ff1d4858788c235")
+val endOffset = participant2.ledger_api.state.end()
+
+participant2.repair.export_acs(
+  parties = Set(partyId),
+  ledgerOffset = endOffset,
+  exportFilePath = "/spike/spike5-repair.acs",
+)
+
+println(s"SPIKE5_REPAIR_EXPORT_OK: offset=$endOffset")

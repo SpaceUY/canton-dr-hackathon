@@ -1,0 +1,8 @@
+# Throwaway keys/exports generated while running these spikes locally —
+# zero real-world value (demo-only parties), but no reason to commit
+# private key material or binary export blobs as a matter of discipline.
+*.der
+*.acs
+*.acs.gz
+*.bin
+*-party-id.txt

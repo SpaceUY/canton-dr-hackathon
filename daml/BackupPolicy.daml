@@ -1,0 +1,160 @@
+-- On-ledger registry + periodic challenges (plan step 5). Canton is not
+-- storage here — these contracts never carry the blob or a key share, only
+-- a hash (receipt) and an HMAC (proof of possession). The real bytes stay
+-- off-ledger between agents (see ../CLAUDE.md, "design decisions").
+module BackupPolicy where
+
+-- custodians lists only the *external* custodians — the owner also holds
+-- one of the n shares (see docs/ROADMAP.md step 4), but nobody challenges
+-- themselves for proof of possession, so it isn't tracked here.
+template BackupPolicy
+  with
+    owner : Party
+    custodians : [Party]
+    k : Int
+    n : Int
+    frequencyHours : Int
+    policyId : Text
+  where
+    signatory owner
+    observer custodians
+
+    ensure k > 0 && k <= n && not (null custodians)
+
+    -- Each custodian calls this once, after receiving its blob+share over
+    -- HTTP, to record a hash of what it got. Never the blob or share itself.
+    nonconsuming choice AcceptCustody : ContractId CustodianAgreement
+      with
+        custodian : Party
+        blobHash : Text
+      controller custodian
+      do
+        assertMsg "custodian must be listed on the policy" (custodian `elem` custodians)
+        create CustodianAgreement with
+          policyId
+          owner
+          custodian
+          blobHash
+
+    nonconsuming choice IssueChallenge : ContractId Challenge
+      with
+        custodian : Party
+        challengeId : Text
+      controller owner
+      do
+        assertMsg "custodian must be listed on the policy" (custodian `elem` custodians)
+        now <- getTime
+        create Challenge with
+          policyId
+          owner
+          custodian
+          challengeId
+          issuedAt = now
+
+    -- Plan step 6: the owner formally asks a custodian to send back its
+    -- blob+share (over HTTP, off-ledger — this just records that it asked).
+    nonconsuming choice RequestRecovery : ContractId RecoveryRequest
+      with
+        custodian : Party
+        requestId : Text
+      controller owner
+      do
+        assertMsg "custodian must be listed on the policy" (custodian `elem` custodians)
+        now <- getTime
+        create RecoveryRequest with
+          policyId
+          owner
+          custodian
+          requestId
+          requestedAt = now
+
+template CustodianAgreement
+  with
+    policyId : Text
+    owner : Party
+    custodian : Party
+    blobHash : Text
+  where
+    signatory custodian
+    observer owner
+
+template Challenge
+  with
+    policyId : Text
+    owner : Party
+    custodian : Party
+    challengeId : Text
+    issuedAt : Time
+  where
+    signatory owner
+    observer custodian
+
+    -- Proof of possession: HMAC-SHA256(share, challengeId), computed by the
+    -- custodian's own agent from its locally stored share. The share itself
+    -- never leaves the custodian — only a value nobody could produce
+    -- without it.
+    choice Respond : ContractId ChallengeResponse
+      with
+        proof : Text
+      controller custodian
+      do
+        now <- getTime
+        create ChallengeResponse with
+          policyId
+          owner
+          custodian
+          challengeId
+          proof
+          respondedAt = now
+
+template ChallengeResponse
+  with
+    policyId : Text
+    owner : Party
+    custodian : Party
+    challengeId : Text
+    proof : Text
+    respondedAt : Time
+  where
+    signatory custodian
+    observer owner
+
+template RecoveryRequest
+  with
+    policyId : Text
+    owner : Party
+    custodian : Party
+    requestId : Text
+    requestedAt : Time
+  where
+    signatory owner
+    observer custodian
+
+    -- blobHash should match what this custodian already recorded in its
+    -- CustodianAgreement — same receipt, confirming it sent back the same
+    -- blob it originally accepted custody of.
+    choice RespondRecovery : ContractId RecoveryResponse
+      with
+        blobHash : Text
+      controller custodian
+      do
+        now <- getTime
+        create RecoveryResponse with
+          policyId
+          owner
+          custodian
+          requestId
+          blobHash
+          respondedAt = now
+
+template RecoveryResponse
+  with
+    policyId : Text
+    owner : Party
+    custodian : Party
+    requestId : Text
+    blobHash : Text
+    respondedAt : Time
+  where
+    signatory custodian
+    observer owner
