@@ -5,8 +5,10 @@ import {
   fetchPositions,
   fetchRecoverProgress,
   fetchStatus,
+  triggerCounterpartyTx,
   triggerRecover,
   type CiphertextSample,
+  type CounterpartyTxResult,
   type PositionView,
   type RecoverEvent,
   type StatusView,
@@ -76,6 +78,10 @@ export function App() {
   const [recoverStartedAt, setRecoverStartedAt] = useState<number | null>(null);
   const [recoverEndedAt, setRecoverEndedAt] = useState<number | null>(null);
   const progressPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [counterpartyTxRunning, setCounterpartyTxRunning] = useState(false);
+  const [counterpartyTxResult, setCounterpartyTxResult] = useState<CounterpartyTxResult | null>(null);
+  const [counterpartyTxError, setCounterpartyTxError] = useState<string | null>(null);
 
   const { revealed, finished } = usePacedEvents(recoverProgress);
 
@@ -163,6 +169,24 @@ export function App() {
   // Opened as a Blob URL in a new tab, not downloaded directly — a jury
   // member reads it there and prints/saves as PDF (Cmd/Ctrl+P) themselves;
   // no backend endpoint, it's built entirely from data already on screen.
+  // The demo's closing step, run from the dashboard instead of a terminal —
+  // real command, real ledger data back (agent/src/counterpartyTx.ts): a
+  // real counterparty proposes a contract naming the (possibly just-
+  // recovered) owner as observer, and the owner then signs the acceptance
+  // themselves, becoming the new Record's sole signatory.
+  const handleCounterpartyTx = async () => {
+    setCounterpartyTxRunning(true);
+    setCounterpartyTxResult(null);
+    setCounterpartyTxError(null);
+    try {
+      setCounterpartyTxResult(await triggerCounterpartyTx());
+    } catch (err) {
+      setCounterpartyTxError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCounterpartyTxRunning(false);
+    }
+  };
+
   const handleDownloadReport = () => {
     if (status === null) return;
     const html = buildRecoverabilityReportHtml(status, positions);
@@ -195,6 +219,7 @@ export function App() {
             custodians={status.custodians}
             positions={positions}
             timer={{ startedAt: recoverStartedAt, endedAt: recoverEndedAt }}
+            lastDistributedAt={status.lastDistributedAt}
           />
 
           <div className="dashboard-columns">
@@ -228,6 +253,33 @@ export function App() {
                   )}
                 </div>
               )}
+
+              <div className="counterparty-tx-block">
+                <button
+                  className="counterparty-tx-button"
+                  onClick={() => void handleCounterpartyTx()}
+                  disabled={counterpartyTxRunning || !succeeded}
+                  title={succeeded ? undefined : "Available after a successful recovery"}
+                >
+                  {counterpartyTxRunning ? "Transacting…" : "Counterparty transacts with recovered owner"}
+                </button>
+
+                {counterpartyTxResult !== null && (
+                  <div className="counterparty-tx-outcome counterparty-tx-success">
+                    <p>
+                      Contract <code>{counterpartyTxResult.recordContractId}</code> is active on{" "}
+                      {counterpartyTxResult.ownerParticipant}. {counterpartyTxResult.proposer.split("::")[0]}{" "}
+                      proposed it; {counterpartyTxResult.owner.split("::")[0]} signed the acceptance themselves and
+                      is its sole signatory.
+                    </p>
+                  </div>
+                )}
+                {counterpartyTxError !== null && (
+                  <div className="counterparty-tx-outcome counterparty-tx-error">
+                    <p>{counterpartyTxError}</p>
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className="dashboard-right">

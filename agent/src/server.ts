@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 
@@ -39,6 +39,27 @@ export function startServer(port: number): void {
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // Real filesystem mtime of the blob this custodian actually holds — not a
+  // separately tracked "last distributed at" record (nothing writes one),
+  // so this is exactly the moment distribute() last overwrote this file,
+  // no more and no less honest than that.
+  const metaMatch = req.url?.match(/^\/custody\/([^/]+)\/blob\/meta$/);
+  if (metaMatch) {
+    const policyId = metaMatch[1] as string;
+    try {
+      const info = await stat(fileFor(policyId, "blob"));
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ blobMtime: info.mtime.toISOString() }));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        res.writeHead(404).end("not found");
+        return;
+      }
+      console.error("agent server request failed:", err);
+      res.writeHead(500).end("internal error");
+    }
+    return;
+  }
+
   const match = req.url?.match(/^\/custody\/([^/]+)\/(blob|share|identity-share)$/);
   if (!match) {
     res.writeHead(404).end("not found");

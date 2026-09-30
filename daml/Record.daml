@@ -13,3 +13,28 @@ template Record
   where
     signatory owner
     observer custodians
+
+-- Demo-closing proof: a real counterparty proposes this naming the
+-- (possibly just-recovered) owner as observer; the owner then exercises
+-- AcceptRecord themselves, via their own signature (Interactive Submission,
+-- from wherever they're currently hosted) — not something anyone else can
+-- do on their behalf. The resulting Record's sole signatory is genuinely
+-- `owner`, so this is real proof the recovered party authored a brand-new
+-- commitment post-recovery, not merely that the ledger recognizes them as
+-- an observer.
+template RecordProposal
+  with
+    proposer : Party
+    owner : Party
+    label : Text
+  where
+    signatory proposer
+    observer owner
+
+    choice AcceptRecord : ContractId Record
+      controller owner
+      do
+        create Record with
+          owner
+          custodians = [proposer]
+          label
