@@ -348,6 +348,22 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+/* Recoverability report */
+.report-button {
+  align-self: flex-start;
+  font-size: 0.82rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid #3a3f4b;
+  color: #d4d4d8;
+}
+
+.report-button:hover {
+  border-color: #71717a;
+  background: #1c1f26;
+}
+
 /* Identity headline - the project's proof, stays prominent, never collapsed */
 /* Full-width row (see App.tsx - lives below .dashboard-columns, not
    inside the narrow left column, which never had room for both cards
