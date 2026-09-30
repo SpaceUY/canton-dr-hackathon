@@ -24,10 +24,13 @@ sibling vault repo `../canton-dr-hackathon-vault` (start at its `Hub.md`).
   the dashboard came close to OOM-killing containers at Docker Desktop's default (7.65GB) during
   testing.
 - **Node.js + pnpm** — for building the Daml model and running the UI.
-- **`dpm`** (Digital Asset Package Manager) to build the Daml model. Download from
-  https://github.com/digital-asset/dpm/releases. If it's not on `PATH` and you'd rather not install
-  it, `damlc build --package-root .` (from `daml/`) works identically — `dpm build` is really just a
-  thin wrapper around `damlc`.
+- **Nothing else to install for the Daml model.** `make build-dar` (see Quick start below) builds it
+  whether or not `dpm`/`damlc` are on `PATH` — if neither is, it downloads `dpm`'s own binary for
+  your OS/arch straight from https://github.com/digital-asset/dpm/releases into `daml/.dpm-cache/`
+  (gitignored, not installed system-wide) and builds with that. See `daml/build-dar.sh`. If you'd
+  rather install `dpm` or `damlc` yourself and keep it on `PATH`, that's used instead automatically —
+  no official Docker image exists for the Daml SDK to build in a container (same situation as Canton
+  3.x images, see `infra/README.md`).
 
 ## Quick start (recommended)
 
@@ -36,7 +39,7 @@ state — owner's node alive, policy active, custodians have accepted custody an
 challenge, 3 real positions seeded:
 
 ```sh
-cd daml && DAML_VERSION=3.5.2 dpm build && cd ..   # only needed once, or after changing daml/
+make build-dar      # builds the DAR (downloads dpm if needed) - only needed once, or after changing daml/
 make rebuild        # builds the agent image once
 make demo-reset     # tears down, rebuilds, seeds, and verifies - takes a few minutes
 ```
@@ -214,8 +217,9 @@ undo), the state lives in named volumes: `participant1_data`, `participant4_data
   and just re-run; every step is idempotent. This is a real, observed failure mode (Canton itself
   logging "late processing" under sustained load, or an internal `proposeAndAuthorize` timeout), not
   something wrong with your setup.
-- **`dpm` isn't on `PATH`**: use `damlc build --package-root .` from `daml/` instead — same result.
-  If you've built before and change `daml/*.daml`, bump `version` in `daml/daml.yaml` first (Canton
+- **Neither `dpm` nor `damlc` is on `PATH`**: `make build-dar` handles this itself (downloads `dpm`
+  into `daml/.dpm-cache/`, see Prerequisites) — you shouldn't need to install anything by hand. If
+  you've built before and change `daml/*.daml`, bump `version` in `daml/daml.yaml` first (Canton
   refuses to vet two different-content packages under the same name+version).
 - **`docker compose run agent1 ...` (or `agent2`/`agent3`) hangs or gives `ECONNREFUSED`**: see the
   note at the top of the Command reference section — always use the separate `agent` service.
