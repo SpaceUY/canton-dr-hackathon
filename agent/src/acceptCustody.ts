@@ -22,7 +22,7 @@ export async function acceptCustody(options: AcceptCustodyOptions): Promise<stri
   // previous version resolved `owner` here anyway and never used it — dead
   // code that silently did a resolveParty(ownerParticipant, ownerPartyHint)
   // lookup, which resolves via participant+hint, not the real external
-  // identity (see ADR-007/ADR-008 in the vault for why that's dangerous:
+  // identity (see ADR-007 in docs/DECISIONS.md for why that's dangerous:
   // it can return an unrelated stale local party of the same name). Removed
   // rather than left as a landmine for a future edit to accidentally wire up.
   const { as, participant, custodianPartyHint, policyId } = options;

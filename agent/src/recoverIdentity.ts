@@ -27,7 +27,7 @@ export interface RecoverIdentityOptions {
 // reports for the policy (never trusts a caller-supplied partyId, and never
 // needs the owner's own participant to be alive): recovering the identity
 // key must not depend on anything only readable with the identity already
-// recovered (ADR-005 in the vault) — this is what keeps that promise.
+// recovered (ADR-005 in docs/DECISIONS.md) — this is what keeps that promise.
 export async function recoverIdentityKey(options: RecoverIdentityOptions): Promise<string> {
   const { keyPath, policyId, endpoints, threshold, custodianParticipant, custodianPartyHint } = options;
   if (endpoints.length < threshold) {
@@ -51,7 +51,7 @@ export async function recoverIdentityKey(options: RecoverIdentityOptions): Promi
   // Matched by fingerprint, not just by policyId: this project's demo
   // environment genuinely accumulates more than one BackupPolicy sharing the
   // same policyId across re-seeds/re-tests (a stale one from before the
-  // external-party migration, in one real case — see ADR-007 in the vault).
+  // external-party migration, in one real case — see ADR-007 in docs/DECISIONS.md).
   // Picking policies[0] blindly reproduced that exact class of bug in this
   // very function during testing; matching against the key's own computed
   // fingerprint instead means an unrelated stale candidate is never picked

@@ -1,7 +1,8 @@
 # External party / identity recovery — findings log
 
-**FROZEN 2026-09-25.** This log continues at `../canton-dr-hackathon-vault/FINDINGS.md` — new
-entries go there, not here. Kept as-is below for history.
+**FROZEN 2026-09-25.** Kept as-is below for history. Later findings went to the team's internal
+notes; the resulting design, including what was proven after this date, is summarized in
+[`docs/DECISIONS.md`](../../docs/DECISIONS.md) (ADR-004, ADR-005, ADR-007, ADR-009, ADR-013).
 
 Written as things are found, not reconstructed at the end. Canton 3.5.x throughout (matches this
 project's version). Source references are to the public `digital-asset/canton` GitHub repo unless

@@ -382,7 +382,7 @@ async function getStatus(
   // full list) — asking the first one is enough to learn the policy itself.
   // Matched by owner id too, not just policyId: this project's demo
   // environment genuinely accumulates more than one BackupPolicy sharing the
-  // same policyId across re-seeds/re-tests (see ADR-007 in the vault) —
+  // same policyId across re-seeds/re-tests (see ADR-007 in docs/DECISIONS.md) —
   // picking the first query match reproduced that exact bug here during
   // testing.
   const first = resolved[0];

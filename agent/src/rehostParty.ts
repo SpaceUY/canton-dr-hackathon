@@ -41,8 +41,7 @@ export interface RehostPartyOptions {
 
 // Authorizes `targetParticipant` to host an already-existing external party
 // that isn't hosted there yet — the mechanism proven in
-// spikes/external-party/ (stepA/stepB there, POC - External Party ACS State
-// Migration in the vault). Must run before restore()'s repair.import_acs:
+// spikes/external-party/ (stepA/stepB there; ADR-004 in docs/DECISIONS.md). Must run before restore()'s repair.import_acs:
 // import_acs only replays contract data, it doesn't grant hosting rights for
 // a party the target doesn't already know about — without this step the
 // target has no business accepting that party's contracts at all.

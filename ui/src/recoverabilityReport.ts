@@ -28,7 +28,7 @@ export function buildRecoverabilityReportHtml(status: StatusView, positions: Pos
   const n = Number(status.n);
 
   // Only the independent custodians are ever queried by a real recovery
-  // (see ADR-012 in the vault) - the owner's own backup fragment (the
+  // (see ADR-012 in docs/DECISIONS.md) - the owner's own backup fragment (the
   // difference between n and this list's length) is deliberately never
   // used, so it can't count toward "verified" either. A custodian counts
   // as verified only if it answered its last challenge AND has nothing
