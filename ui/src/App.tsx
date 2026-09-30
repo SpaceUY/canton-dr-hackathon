@@ -264,6 +264,15 @@ export function App() {
                   )}
                 </div>
               )}
+            </section>
+
+            <section className="dashboard-right">
+              <ProseExplainer />
+              <Positions positions={positions} />
+              <CustodianList custodians={status.custodians} />
+              <button className="report-button" onClick={handleDownloadReport}>
+                Download recoverability report
+              </button>
 
               <div className="counterparty-tx-block">
                 <button
@@ -297,15 +306,6 @@ export function App() {
                   </div>
                 )}
               </div>
-            </section>
-
-            <section className="dashboard-right">
-              <ProseExplainer />
-              <Positions positions={positions} />
-              <CustodianList custodians={status.custodians} />
-              <button className="report-button" onClick={handleDownloadReport}>
-                Download recoverability report
-              </button>
             </section>
           </div>
 

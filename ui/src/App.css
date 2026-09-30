@@ -503,12 +503,9 @@ button:disabled {
 .counterparty-tx-block {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.6rem;
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid #2a2e37;
-  width: 100%;
+  margin-top: 0.4rem;
 }
 
 .counterparty-tx-button {
