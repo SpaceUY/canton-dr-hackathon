@@ -215,29 +215,53 @@ export async function submitAsExternalParty(
 
   const signature = cryptoSign(null, Buffer.from(prepared.preparedTransactionHash, "base64"), privateKey);
 
-  await request(`${participant}/v2/interactive-submission/executeAndWait`, {
-    method: "POST",
-    body: JSON.stringify({
-      preparedTransaction: prepared.preparedTransaction,
-      hashingSchemeVersion: prepared.hashingSchemeVersion,
-      partySignatures: {
-        signatures: [
-          {
-            party: actAsPartyId,
-            signatures: [
-              {
-                format: "SIGNATURE_FORMAT_RAW",
-                signature: signature.toString("base64"),
-                signedBy: fingerprint,
-                signingAlgorithmSpec: "SIGNING_ALGORITHM_SPEC_ED25519",
-              },
-            ],
-          },
-        ],
-      },
-      deduplicationPeriod: { Empty: {} },
-      submissionId: `${commandId}-submit`,
-      userId: "participant_admin",
-    }),
-  });
+  const execute = () =>
+    request(`${participant}/v2/interactive-submission/executeAndWait`, {
+      method: "POST",
+      body: JSON.stringify({
+        preparedTransaction: prepared.preparedTransaction,
+        hashingSchemeVersion: prepared.hashingSchemeVersion,
+        partySignatures: {
+          signatures: [
+            {
+              party: actAsPartyId,
+              signatures: [
+                {
+                  format: "SIGNATURE_FORMAT_RAW",
+                  signature: signature.toString("base64"),
+                  signedBy: fingerprint,
+                  signingAlgorithmSpec: "SIGNING_ALGORITHM_SPEC_ED25519",
+                },
+              ],
+            },
+          ],
+        },
+        deduplicationPeriod: { Empty: {} },
+        submissionId: `${commandId}-submit`,
+        userId: "participant_admin",
+      }),
+    });
+
+  // rehostParty.ts clears the party's onboarding flag fire-and-forget
+  // (Canton "resumes it automatically" in the background - blocking on it
+  // synchronously there cost +50s of dead UI time, see its own comment:
+  // that ~50s isn't wasted waiting, it's roughly how long Canton itself
+  // takes to actually finish this operation). That leaves a real window,
+  // right after a recovery, where the owner can already RECEIVE commands on
+  // the new participant but not yet SUBMIT its own - reproduced live via the
+  // UI (not just simulated): the "Counterparty transacts" button, clicked
+  // right after recover() finishes, hit exactly this race, and a first,
+  // shorter retry budget here (30s) still wasn't enough - measured live, it
+  // cleared sometime between 30s and roughly 2 minutes after being fired.
+  // Same retry shape as resolveParty's REQUEST_ALREADY_IN_FLIGHT handling -
+  // a transient, already-anticipated Canton state, not a bug to propagate.
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      await execute();
+      return;
+    } catch (err) {
+      if (!(err instanceof Error) || !err.message.includes("PARTY_CURRENTLY_ONBOARDING") || attempt === 59) throw err;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
 }

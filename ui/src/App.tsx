@@ -59,6 +59,17 @@ function parseRecoverResult(raw: string, totalFragments: string): string | null 
   return `Reconstructed the key from ${used} of ${totalFragments} fragments and restored the state onto ${target}.`;
 }
 
+// Canton's own error strings can run to hundreds of characters of nested
+// JSON (correlationId, traceId, context...) — useful detail, but not as the
+// only thing on screen. Cut at the first brace/newline so the visible line
+// stays short; the full string is still available (see the "Full error"
+// details below it), nothing is lost, just not shown twice.
+function summarizeError(message: string): string {
+  const cut = message.search(/[{\n]/);
+  const short = cut === -1 ? message : message.slice(0, cut).trim();
+  return short.length > 0 ? short : message.slice(0, 140);
+}
+
 interface RecoverOutcome {
   kind: "success" | "error";
   summary: string;
@@ -276,7 +287,13 @@ export function App() {
                 )}
                 {counterpartyTxError !== null && (
                   <div className="counterparty-tx-outcome counterparty-tx-error">
-                    <p>{counterpartyTxError}</p>
+                    <p>{summarizeError(counterpartyTxError)}</p>
+                    {counterpartyTxError.length > 140 && (
+                      <details className="counterparty-tx-error-details">
+                        <summary>Full error</summary>
+                        <pre className="counterparty-tx-error-raw">{counterpartyTxError}</pre>
+                      </details>
+                    )}
                   </div>
                 )}
               </div>
