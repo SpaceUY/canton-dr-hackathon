@@ -14,7 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo } from "react";
-import type { RecoverEvent } from "./api";
+import type { CustodySecret, RecoverEvent } from "./api";
 import { SUBSTEP_LABEL } from "./labels";
 
 // Every state below is derived from real backend data: recover events (via
@@ -169,6 +169,15 @@ function endpointNodeId(endpoint: string): string {
   }
 }
 
+function custodianSublabel(state: { status: NodeStatus; secret?: CustodySecret } | undefined): string {
+  if (state === undefined || state.secret === undefined) return "Holding encrypted fragments";
+  const fragment = state.secret === "identity" ? "identity-key fragment" : "data-key fragment";
+  if (state.status === "responded") return `Sent its ${fragment}`;
+  if (state.status === "querying") return `Sending its ${fragment}…`;
+  if (state.status === "no-response") return "Unreachable — skipped";
+  return "Holding encrypted fragments";
+}
+
 export function RecoveryGraph({
   revealed,
   finished,
@@ -177,17 +186,31 @@ export function RecoveryGraph({
   failed,
   participant1Alive,
 }: RecoveryGraphProps) {
-  const custodianStatus = useMemo(() => {
-    const status: Record<string, NodeStatus> = { agent2: "idle", agent3: "idle" };
+  // Each custodian is asked twice in a real recovery - first for its
+  // identity-key fragment, later for its data-key fragment - so it pulses
+  // twice; the latest round trip (and which secret it was for) wins.
+  const custodianState = useMemo(() => {
+    const state: Record<string, { status: NodeStatus; secret?: CustodySecret }> = {
+      agent2: { status: "idle" },
+      agent3: { status: "idle" },
+    };
     for (const event of revealed) {
       if (event.type === "custodian-query") {
-        status[endpointNodeId(event.endpoint)] = "querying";
+        state[endpointNodeId(event.endpoint)] = { status: "querying", secret: event.secret };
       } else if (event.type === "custodian-response") {
-        status[endpointNodeId(event.endpoint)] = event.ok ? "responded" : "no-response";
+        state[endpointNodeId(event.endpoint)] = {
+          status: event.ok ? "responded" : "no-response",
+          secret: event.secret,
+        };
       }
     }
-    return status;
+    return state;
   }, [revealed]);
+  const custodianStatus: Record<string, NodeStatus> = {
+    agent2: custodianState.agent2?.status ?? "idle",
+    agent3: custodianState.agent3?.status ?? "idle",
+  };
+  const identityFetchStarted = revealed.some((e) => e.type === "custodian-query" && e.secret === "identity");
 
   const milestones = useMemo(
     () => new Set(revealed.filter((e) => e.type === "milestone").map((e) => e.step)),
@@ -208,7 +231,7 @@ export function RecoveryGraph({
     ? "recovered"
     : failed && finished
       ? "no-response"
-      : milestones.size > 0 || latestRehostSubstep !== undefined
+      : milestones.size > 0 || latestRehostSubstep !== undefined || identityFetchStarted
         ? "querying"
         : "idle";
 
@@ -221,12 +244,16 @@ export function RecoveryGraph({
         : milestones.has("key-reconstructed")
           ? "Key reconstructed — importing state…"
           : milestones.has("identity-reauthorized")
-            ? "Identity re-authorized — fetching fragments…"
+            ? "Identity re-authorized — fetching data-key fragments…"
             : latestRehostSubstep !== undefined
               ? SUBSTEP_LABEL[latestRehostSubstep.step]
-              : recovering
-                ? "Awaiting recovery…"
-                : "Empty — awaiting recovery";
+              : milestones.has("identity-key-reconstructed")
+                ? "Identity key rebuilt — re-authorizing…"
+                : identityFetchStarted
+                  ? "Rebuilding the owner's identity key…"
+                  : recovering
+                    ? "Awaiting recovery…"
+                    : "Empty — awaiting recovery";
 
   const identityTransferred = milestones.has("identity-reauthorized");
 
@@ -251,12 +278,7 @@ export function RecoveryGraph({
       data: {
         label: "Custodian 2",
         techId: "agent2",
-        sublabel:
-          custodianStatus.agent2 === "responded"
-            ? "Fragment sent"
-            : custodianStatus.agent2 === "querying"
-              ? "Sending fragment…"
-              : "Holding an encrypted fragment",
+        sublabel: custodianSublabel(custodianState.agent2),
         status: custodianStatus.agent2 ?? "idle",
         kind: "custodian",
       },
@@ -269,12 +291,7 @@ export function RecoveryGraph({
       data: {
         label: "Custodian 3",
         techId: "agent3",
-        sublabel:
-          custodianStatus.agent3 === "responded"
-            ? "Fragment sent"
-            : custodianStatus.agent3 === "querying"
-              ? "Sending fragment…"
-              : "Holding an encrypted fragment",
+        sublabel: custodianSublabel(custodianState.agent3),
         status: custodianStatus.agent3 ?? "idle",
         kind: "custodian",
       },
@@ -371,7 +388,9 @@ export function RecoveryGraph({
           ? "same identity"
           : latestRehostSubstep !== undefined
             ? SUBSTEP_LABEL[latestRehostSubstep.step]
-            : undefined,
+            : milestones.has("identity-key-reconstructed")
+              ? "identity key rebuilt"
+              : undefined,
       },
     },
   ];

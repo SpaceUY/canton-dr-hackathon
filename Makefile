@@ -1,4 +1,4 @@
-.PHONY: build-dar rebuild demo-reset
+.PHONY: build-dar rebuild demo-reset destroy-node
 
 # Builds the DAR without assuming dpm/damlc is on PATH — see
 # daml/build-dar.sh. Uses either one if already installed; otherwise
@@ -48,4 +48,29 @@ demo-reset:
 	cd infra && docker compose run --rm agent respond --as agent2 --participant participant2:5023 --custodian custodian2 --policy-id demo --challenge-id demo-reset-c1
 	cd infra && docker compose run --rm agent challenge --owner-participant participant1:5013 --owner owner --custodian-participant participant3:5033 --custodian custodian3 --policy-id demo --challenge-id demo-reset-c2
 	cd infra && docker compose run --rm agent respond --as agent3 --participant participant3:5033 --custodian custodian3 --policy-id demo --challenge-id demo-reset-c2
+# Final backup, AFTER custody receipts and challenge responses exist: the
+# first distribute above had to come before accept-custody (a receipt
+# hashes the blob it received), so that blob can never contain its own
+# receipts. Without this refresh the recovered node lacks the
+# CustodianAgreement/ChallengeResponse contracts it shares with each
+# custodian, and Canton's ACS commitments with them read Mismatch after
+# recovery (found in the 2026-10-01 rehearsal). Cost, declared in the
+# README: the on-ledger receipts keep the hash of the previous blob.
+	cd infra && docker compose run --rm agent distribute --source participant1 --party owner --policy-id demo --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
 	cd infra && docker compose run --rm agent verify-demo-state
+
+# The demo's disaster, from a terminal (never from the dashboard - see
+# CLAUDE.md's demo section / ADR-006 in docs/DECISIONS.md): kills
+# participant1 and deletes its disk, then deletes the owner's private key
+# file. After this the key exists only as Shamir shares held by the
+# custodians - recover rebuilds it from them (it never reads owner.der),
+# and fails if they can't. owner.party-id.txt is left in place on purpose:
+# a party id is public (every counterparty sees it on-ledger), and the
+# dashboard's /status reads it. The key is deleted through the shared agent
+# image, not alpine, so this never needs network access on demo day.
+destroy-node:
+	docker stop -t 1 infra-participant1-1
+	docker rm infra-participant1-1
+	docker volume rm infra_participant1_data
+	docker run --rm --entrypoint sh -v infra_owner_identity:/k canton-dr-agent:latest \
+		-c 'rm /k/owner.der && test ! -e /k/owner.der && echo "owner.der deleted - the owner key now exists only as custodian-held Shamir shares"'

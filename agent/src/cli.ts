@@ -27,7 +27,7 @@ function usage(): never {
       "  distribute     --source <participant> --party <hint> --policy-id <id> --endpoints <url,url,...> --k <n>\n" +
       "  distribute-identity --policy-id <id> --endpoints <url,url,...> --k <n> [--key-path <path>]\n" +
       "  recover        --target <participant> --target-ledger-api <host:port> --loader-participant <console> " +
-      "--policy-id <id> --endpoints <url,url,...> --k <n>\n" +
+      "--policy-id <id> --endpoints <url,url,...> --k <n> --identity-custodian <participant:port:hint>\n" +
       "  recover-identity --policy-id <id> --endpoints <url,url,...> --k <n> --custodian-participant <p> " +
       "--custodian <hint> [--key-path <path>]\n" +
       "  counterparty-tx --as <custodian-hint> --participant <p> --owner-participant <host:port> [--label <text>]\n" +
@@ -100,14 +100,20 @@ function intFlag(args: string[], name: string): number {
 }
 
 // "participant:port:partyHint" -> { participant: "participant:port", partyHint }
-function custodianRefsFlag(args: string[]): CustodianRef[] {
-  return multiFlag(args, "custodian").map((raw) => {
+function custodianRefsFlag(args: string[], name = "custodian"): CustodianRef[] {
+  return multiFlag(args, name).map((raw) => {
     const parts = raw.split(":");
     const partyHint = parts.pop();
     const participant = parts.join(":");
     if (partyHint === undefined || participant === "") usage();
     return { participant, partyHint };
   });
+}
+
+function singleCustodianRefFlag(args: string[], name: string): CustodianRef {
+  const refs = custodianRefsFlag(args, name);
+  if (refs.length !== 1) usage();
+  return refs[0] as CustodianRef;
 }
 
 async function main(): Promise<void> {
@@ -161,6 +167,7 @@ async function main(): Promise<void> {
         policyId: flag(rest, "policy-id"),
         endpoints: endpointsFlag(rest),
         threshold: thresholdFlag(rest),
+        identityCustodian: singleCustodianRefFlag(rest, "identity-custodian"),
       }),
     );
     return;
@@ -193,16 +200,15 @@ async function main(): Promise<void> {
   }
 
   if (command === "recover-identity") {
-    console.log(
-      await recoverIdentityKey({
-        keyPath: optionalFlag(rest, "key-path", OWNER_KEY_PATH),
-        policyId: flag(rest, "policy-id"),
-        endpoints: endpointsFlag(rest),
-        threshold: thresholdFlag(rest),
-        custodianParticipant: flag(rest, "custodian-participant"),
-        custodianPartyHint: flag(rest, "custodian"),
-      }),
-    );
+    const { line } = await recoverIdentityKey({
+      keyPath: optionalFlag(rest, "key-path", OWNER_KEY_PATH),
+      policyId: flag(rest, "policy-id"),
+      endpoints: endpointsFlag(rest),
+      threshold: thresholdFlag(rest),
+      custodianParticipant: flag(rest, "custodian-participant"),
+      custodianPartyHint: flag(rest, "custodian"),
+    });
+    console.log(line);
     return;
   }
 

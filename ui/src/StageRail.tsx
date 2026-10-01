@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { RecoverEvent, RecoverStep } from "./api";
+import type { CustodySecret, RecoverEvent, RecoverStep } from "./api";
 import { SUBSTEP_LABEL } from "./labels";
 
 // Named stages, not a spinner - each one explains what it means, and ticks
@@ -16,13 +16,18 @@ interface Stage {
 
 const STAGES: Stage[] = [
   {
+    step: "identity-key-reconstructed",
+    name: "Identity key rebuilt",
+    blurb: "The owner's signing key comes back from 2 custodians' fragments, checked against the ledger.",
+  },
+  {
     step: "identity-reauthorized",
     name: "Identity re-authorized",
     blurb: "The target node is authorized to act for the owner.",
   },
   {
     step: "key-reconstructed",
-    name: "Key reconstructed",
+    name: "Data key reconstructed",
     blurb: "2 of 3 fragments are enough — no single custodian could do this alone.",
   },
   {
@@ -59,22 +64,34 @@ export function StageRail({ revealed, finished, failed }: StageRailProps) {
     return events.length > 0 ? events[events.length - 1] : undefined;
   }, [revealed]);
 
-  // Custodian query/response events double as stage 2's live detail - the
-  // same events RecoveryGraph reads to pulse the custodian nodes.
+  // Custodian query/response events double as the live detail of the two
+  // stages that collect fragments (identity key first, data key later) -
+  // the same events RecoveryGraph reads to pulse the custodian nodes.
   const custodianDetail = useMemo(() => {
-    let queried: string | undefined;
-    let responded: string | undefined;
-    for (const event of revealed) {
-      if (event.type === "custodian-query") queried = endpointNodeId(event.endpoint);
-      else if (event.type === "custodian-response") responded = endpointNodeId(event.endpoint);
-    }
-    if (queried !== undefined && queried !== responded) {
-      return `Querying ${CUSTODIAN_NAME[queried] ?? queried}…`;
-    }
-    if (responded !== undefined) {
-      return `${CUSTODIAN_NAME[responded] ?? responded} responded`;
-    }
-    return undefined;
+    const detailFor = (secret: CustodySecret): string | undefined => {
+      const fragment = secret === "identity" ? "identity-key fragment" : "data-key fragment";
+      let queried: string | undefined;
+      let responded: string | undefined;
+      let respondedOk = true;
+      for (const event of revealed) {
+        if (event.type !== "custodian-query" && event.type !== "custodian-response") continue;
+        if (event.secret !== secret) continue;
+        if (event.type === "custodian-query") queried = endpointNodeId(event.endpoint);
+        else {
+          responded = endpointNodeId(event.endpoint);
+          respondedOk = event.ok;
+        }
+      }
+      if (queried !== undefined && queried !== responded) {
+        return `Asking ${CUSTODIAN_NAME[queried] ?? queried} for its ${fragment}…`;
+      }
+      if (responded !== undefined) {
+        const name = CUSTODIAN_NAME[responded] ?? responded;
+        return respondedOk ? `${name} sent its ${fragment}` : `${name} unreachable — skipped`;
+      }
+      return undefined;
+    };
+    return { identity: detailFor("identity"), data: detailFor("data") };
   }, [revealed]);
 
   const activeIndex = STAGES.findIndex((s) => !milestones.has(s.step));
@@ -87,12 +104,18 @@ export function StageRail({ revealed, finished, failed }: StageRailProps) {
         const isFailed = failed && finished && i === activeIndex;
         const state = done ? "done" : isFailed ? "failed" : isActive ? "active" : "pending";
 
-        const liveDetail =
-          isActive && stage.step === "identity-reauthorized" && latestRehostSubstep !== undefined
-            ? SUBSTEP_LABEL[latestRehostSubstep.step]
-            : isActive && stage.step === "key-reconstructed"
-              ? custodianDetail
-              : undefined;
+        // Shown on the active stage, and kept on the stage that failed so the
+        // reason (e.g. "Custodian 3 unreachable — skipped") stays on screen.
+        const showDetail = isActive || isFailed;
+        const liveDetail = !showDetail
+          ? undefined
+          : stage.step === "identity-key-reconstructed"
+            ? custodianDetail.identity
+            : stage.step === "identity-reauthorized" && latestRehostSubstep !== undefined
+              ? SUBSTEP_LABEL[latestRehostSubstep.step]
+              : stage.step === "key-reconstructed"
+                ? custodianDetail.data
+                : undefined;
 
         return (
           <div key={stage.step} className={`stage stage-${state}`}>

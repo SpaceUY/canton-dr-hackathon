@@ -194,7 +194,7 @@ services:
   #     --endpoints http://agent1:4001,http://agent2:4002,http://agent3:4003 --k 2
   #   docker compose run --rm agent recover --target participant4 --target-ledger-api participant4:5043 \
   #     --loader-participant participant2 --policy-id demo \
-  #     --endpoints http://agent2:4002,http://agent3:4003 --k 2
+  #     --endpoints http://agent2:4002,http://agent3:4003 --k 2 --identity-custodian participant2:5023:custodian2
   #
   # Step 5 (accept-custody, respond) reads a share/blob straight out of the
   # relevant agentN's custody volume via --as agentN — read-only, since only
@@ -253,7 +253,10 @@ services:
       ]
     volumes:
       - ./canton:/canton/user-config:ro
-      - owner_identity:/canton/identity:ro
+      # Writable: POST /recover rebuilds the owner's key from the custodians'
+      # identity shares and writes it back here (after `make destroy-node`
+      # deleted it), so the closing counterparty-tx can sign as owner.
+      - owner_identity:/canton/identity
     ports:
       - "4010:4010"
     healthcheck:

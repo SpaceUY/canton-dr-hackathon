@@ -48,12 +48,25 @@ history". It collapses to a single-instant window (confirmed in Canton's
 `GrpcParticipantInspectionService.validateSynchronizerTimeRange`). `agent/src/checkCommitment.ts`
 passes an explicit `Epoch..now` range.
 
-**Current scope (honest).** `check-commitment` shows real, independently computed, matching
-commitments between live participants *before* a disaster. It is **not** part of the `recover`
-pipeline. The recovery target is a different participant with no commitment history of its own, and
-the command prints Canton's result without asserting `Match`. After a disaster, the lost node's own
-commitment history is gone too, so verifying means asking the counterparty; it is not a local
-operation.
+**Current scope (honest).** After a successful recovery the dashboard watches Canton's own
+comparison between each custodian's participant and the recovered one (`GET /commitments`,
+`agent/src/commitmentWatch.ts`).
+
+- **What it compares.** Both sides hash the contracts they share, independently. A `Match` means
+  the counterparty arrived at the same hash as the node rebuilt from the backup.
+- **Measured.** It gave `Match`, with no disagreeing periods, in 2 of 2 runs, 40–75 s after
+  recovery. The reconciliation interval is 1 minute.
+- **Limits.**
+  - It is a verification shown afterwards, not a gate inside `recover`.
+  - It covers only state shared with the custodians' participants.
+  - It compares periods after recovery, on the new participant pair. The dead node's own commitment
+    history is gone.
+
+**Found on the way.** The first rehearsal gave `Mismatch` with both custodians, and the cause was
+real: the backup snapshot predated the custodians' receipts and challenge responses, so those
+shared contracts were missing on the recovered node. The commitments caught exactly that.
+`make demo-reset` now takes a final backup after every pre-disaster contract exists. The cost is
+that on-ledger receipts carry the previous blob's hash.
 
 ## ADR-004 — Identity recovery via external parties is in scope
 
@@ -87,10 +100,16 @@ a separate path (`identity-share`). It is never mixed with the data-key shares.
 identity already recovered. `recover-identity` verifies the reconstructed key against what a
 *custodian's* ledger view reports as `BackupPolicy.owner`, not against a caller-supplied party id.
 
-**Status.** `distribute-identity` and `recover-identity` are implemented and were verified with a
-genuinely deleted key file: rebuilt from 2 of 3 shares, then used to sign a real transaction.
-**Not yet wired into `recover`**: today `recover` reads the owner key from the owner-side identity
-volume. Wiring the Shamir reconstruction into `recover` is the next planned change.
+**Status.** This is the first stage of `recover`.
+- The demo's disaster (`make destroy-node`) deletes `owner.der`. `recover` then rebuilds the key
+  from the custodians' identity-key shares and verifies it against a custodian's ledger view. It
+  never reads a key from disk.
+- Only then does it re-host the party. The stage is read-only, so a missing share fails it before
+  any topology change.
+- The verified key is written back to the owner-side key store, so the owner can keep signing.
+  The write is refused if a *different* key is already there.
+- `verify-demo-state` rebuilds the key in memory before every demo.
+- `recover-identity` runs the same stage on its own.
 
 ## ADR-006 — participant1 persists to disk; the demo deletes the disk
 
@@ -175,9 +194,10 @@ also now honours Canton's own `retryInfo` on `REQUEST_ALREADY_IN_FLIGHT`.
 **Decision.** The layout is a fixed two-column dashboard with a metrics strip across the top:
 - **Metrics strip:** threshold, healthy custodians, last challenge, protected positions, backup
   freshness (RPO) and a live recovery timer (RTO).
-- **Left column:** the system map, the Recover button, a three-stage rail and the before/after
-  identity panel.
-- **Right column:** a short explainer, the real positions and the custodian list.
+- **Left column:** the system map, the Recover button, a four-stage rail, the recovery result and,
+  under it, the before/after identity comparison.
+- **Right column:** a short explainer, the real positions, the custodian list, the closing
+  counterparty transaction and the counterparty-verification (ACS commitments) panel.
 
 Raw ids, hashes and ciphertext hex sit in a collapsed footer.
 
