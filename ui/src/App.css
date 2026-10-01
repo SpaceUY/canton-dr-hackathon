@@ -22,6 +22,19 @@ h1 {
   margin: 0 0 1.25rem;
 }
 
+.h1-mark {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+  margin-top: -0.3rem;
+}
+
+.h1-mark svg {
+  display: block;
+  height: 34px;
+  width: auto;
+}
+
 /* Product first, credit after: small, muted, on the same line. */
 .h1-credit {
   font-size: 0.75rem;

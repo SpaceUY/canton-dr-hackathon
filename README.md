@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/tessera-mark.svg" width="120" alt="Tessera">
+</p>
+
 # Tessera
 
 **Operational continuity for Canton participants.** Survive participant loss without losing your
