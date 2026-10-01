@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="32" height="32" fill="currentColor" role="img" aria-label="Tessera">
+  <title>Tessera</title>
+  <style>
+    svg { color: #1a1a1a; }
+    @media (prefers-color-scheme: dark) { svg { color: #e4e6eb; } }
+  </style>
+  <defs>
+    <clipPath id="fCoin"><circle cx="128" cy="128" r="122"/></clipPath>
+    <mask id="fChannel">
+      <rect x="0" y="0" width="256" height="256" fill="#fff"/>
+      <g stroke="#000" stroke-width="13" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M64,22 L78,70 L58,118 L74,170 L62,236"/>
+      <path d="M62,196 L120,210 L190,196 L244,186"/>
+      </g>
+    </mask>
+    <mask id="fHollow">
+      <rect x="0" y="0" width="256" height="256" fill="#fff"/>
+      <g stroke="#000" stroke-width="6.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M64,22 L78,70 L58,118 L74,170 L62,236"/>
+      <path d="M62,196 L120,210 L190,196 L244,186"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#fChannel)">
+    <circle cx="128" cy="128" r="116" fill="none" stroke="currentColor" stroke-width="12"/>
+    <circle cx="128.00" cy="44.00" r="5.2"/>
+      <circle cx="145.46" cy="45.84" r="5.2"/>
+      <circle cx="162.17" cy="51.26" r="5.2"/>
+      <circle cx="177.37" cy="60.04" r="5.2"/>
+      <circle cx="190.42" cy="71.79" r="5.2"/>
+      <circle cx="200.75" cy="86.00" r="5.2"/>
+      <circle cx="207.89" cy="102.04" r="5.2"/>
+      <circle cx="211.54" cy="119.22" r="5.2"/>
+      <circle cx="211.54" cy="136.78" r="5.2"/>
+      <circle cx="207.89" cy="153.96" r="5.2"/>
+      <circle cx="200.75" cy="170.00" r="5.2"/>
+      <circle cx="190.42" cy="184.21" r="5.2"/>
+      <circle cx="177.37" cy="195.96" r="5.2"/>
+      <circle cx="162.17" cy="204.74" r="5.2"/>
+      <circle cx="145.46" cy="210.16" r="5.2"/>
+      <circle cx="128.00" cy="212.00" r="5.2"/>
+      <circle cx="110.54" cy="210.16" r="5.2"/>
+      <circle cx="93.83" cy="204.74" r="5.2"/>
+      <circle cx="78.63" cy="195.96" r="5.2"/>
+      <circle cx="65.58" cy="184.21" r="5.2"/>
+      <circle cx="55.25" cy="170.00" r="5.2"/>
+      <circle cx="48.11" cy="153.96" r="5.2"/>
+      <circle cx="44.46" cy="136.78" r="5.2"/>
+      <circle cx="44.46" cy="119.22" r="5.2"/>
+      <circle cx="48.11" cy="102.04" r="5.2"/>
+      <circle cx="55.25" cy="86.00" r="5.2"/>
+      <circle cx="65.58" cy="71.79" r="5.2"/>
+      <circle cx="78.63" cy="60.04" r="5.2"/>
+      <circle cx="93.83" cy="51.26" r="5.2"/>
+      <circle cx="110.54" cy="45.84" r="5.2"/>
+    <g transform="translate(74.97,187.93) scale(0.175,-0.175)"><path d="M252 620H198Q114 620 85.5 597.0Q57 574 39 492H15L21 662H585L591 492H567Q550 575 521.5 597.5Q493 620 408 620H354V109Q354 54 371.0 38.0Q388 22 450 19V0H158V19Q220 23 236.0 39.5Q252 56 252 120Z"/></g>
+  </g>
+  <g clip-path="url(#fCoin)" mask="url(#fHollow)">
+    <g fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="butt" stroke-linejoin="round">
+      <path d="M64,22 L78,70 L58,118 L74,170 L62,236"/>
+      <path d="M62,196 L120,210 L190,196 L244,186"/>
+    </g>
+  </g>
+</svg>

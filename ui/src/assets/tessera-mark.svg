@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="7 7 242 242" width="120" height="120" fill="currentColor" role="img" aria-label="Tessera">
+  <title>Tessera</title>
+  <defs>
+    <clipPath id="tCoin"><circle cx="128" cy="128" r="119.6"/></clipPath>
+    <mask id="tChannel">
+      <rect x="0" y="0" width="256" height="256" fill="#fff"/>
+      <g stroke="#000" stroke-width="6.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M57,8 L67,44 L52,78 L65,118 L51,158 L63,198 L55,250"/>
+      <path d="M58,197 L101,208 L151,189 L201,201 L250,190"/>
+      <path d="M188,14 L178,52 L190,74 L181,98"/>
+      </g>
+    </mask>
+    <mask id="tHollow">
+      <rect x="0" y="0" width="256" height="256" fill="#fff"/>
+      <g stroke="#000" stroke-width="3.1" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M57,8 L67,44 L52,78 L65,118 L51,158 L63,198 L55,250"/>
+      <path d="M58,197 L101,208 L151,189 L201,201 L250,190"/>
+      <path d="M188,14 L178,52 L190,74 L181,98"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#tChannel)">
+      <circle cx="128" cy="128" r="118" fill="none" stroke="currentColor" stroke-width="3.2"/>
+      <circle cx="128" cy="128" r="112" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <g transform="translate(145.19,225.50) rotate(-28.00) scale(0.780)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(169.05,218.09) rotate(-42.50) scale(0.843)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="172.93" cy="201.33" r="2.3"/>
+      <g transform="translate(190.30,204.94) rotate(-57.00) scale(0.901)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(207.58,186.89) rotate(-71.50) scale(0.949)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="202.85" cy="170.35" r="2.3"/>
+      <g transform="translate(219.79,165.09) rotate(-86.00) scale(0.982)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(226.15,140.92) rotate(-100.50) scale(0.999)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="214.00" cy="128.75" r="2.3"/>
+      <g transform="translate(226.26,115.93) rotate(-115.00) scale(0.997)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(220.11,91.72) rotate(-129.50) scale(0.976)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="203.58" cy="86.96" r="2.3"/>
+      <g transform="translate(208.09,69.81) rotate(-144.00) scale(0.940)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(190.97,51.61) rotate(-158.50) scale(0.890)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="174.21" cy="55.47" r="2.3"/>
+      <g transform="translate(169.84,38.28) rotate(-173.00) scale(0.830)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(256,0) scale(-1,1)">
+      <g transform="translate(145.19,225.50) rotate(-28.00) scale(0.780)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(169.05,218.09) rotate(-42.50) scale(0.843)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="172.93" cy="201.33" r="2.3"/>
+      <g transform="translate(190.30,204.94) rotate(-57.00) scale(0.901)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(207.58,186.89) rotate(-71.50) scale(0.949)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="202.85" cy="170.35" r="2.3"/>
+      <g transform="translate(219.79,165.09) rotate(-86.00) scale(0.982)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(226.15,140.92) rotate(-100.50) scale(0.999)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="214.00" cy="128.75" r="2.3"/>
+      <g transform="translate(226.26,115.93) rotate(-115.00) scale(0.997)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(220.11,91.72) rotate(-129.50) scale(0.976)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="203.58" cy="86.96" r="2.3"/>
+      <g transform="translate(208.09,69.81) rotate(-144.00) scale(0.940)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <g transform="translate(190.97,51.61) rotate(-158.50) scale(0.890)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      <circle cx="174.21" cy="55.47" r="2.3"/>
+      <g transform="translate(169.84,38.28) rotate(-173.00) scale(0.830)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z"/></g>
+      </g>
+      <g transform="translate(128,227) rotate(-90)"><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z" transform="rotate(34) scale(0.62)"/><path d="M0,0 C5.5,-5.6 15,-5.2 21,0 C15,5.2 5.5,5.6 0,0 Z" transform="rotate(-34) scale(0.62)"/></g>
+      <circle cx="128" cy="227" r="2.6"/>
+      <circle cx="128.00" cy="48.00" r="2.25"/>
+      <circle cx="137.29" cy="48.54" r="2.25"/>
+      <circle cx="146.45" cy="50.16" r="2.25"/>
+      <circle cx="155.36" cy="52.82" r="2.25"/>
+      <circle cx="163.90" cy="56.51" r="2.25"/>
+      <circle cx="171.96" cy="61.16" r="2.25"/>
+      <circle cx="179.42" cy="66.72" r="2.25"/>
+      <circle cx="186.19" cy="73.10" r="2.25"/>
+      <circle cx="192.17" cy="80.23" r="2.25"/>
+      <circle cx="197.28" cy="88.00" r="2.25"/>
+      <circle cx="201.46" cy="96.31" r="2.25"/>
+      <circle cx="204.64" cy="105.06" r="2.25"/>
+      <circle cx="206.78" cy="114.11" r="2.25"/>
+      <circle cx="207.86" cy="123.35" r="2.25"/>
+      <circle cx="207.86" cy="132.65" r="2.25"/>
+      <circle cx="206.78" cy="141.89" r="2.25"/>
+      <circle cx="204.64" cy="150.94" r="2.25"/>
+      <circle cx="201.46" cy="159.69" r="2.25"/>
+      <circle cx="197.28" cy="168.00" r="2.25"/>
+      <circle cx="192.17" cy="175.77" r="2.25"/>
+      <circle cx="186.19" cy="182.90" r="2.25"/>
+      <circle cx="179.42" cy="189.28" r="2.25"/>
+      <circle cx="171.96" cy="194.84" r="2.25"/>
+      <circle cx="163.90" cy="199.49" r="2.25"/>
+      <circle cx="155.36" cy="203.18" r="2.25"/>
+      <circle cx="146.45" cy="205.84" r="2.25"/>
+      <circle cx="137.29" cy="207.46" r="2.25"/>
+      <circle cx="128.00" cy="208.00" r="2.25"/>
+      <circle cx="118.71" cy="207.46" r="2.25"/>
+      <circle cx="109.55" cy="205.84" r="2.25"/>
+      <circle cx="100.64" cy="203.18" r="2.25"/>
+      <circle cx="92.10" cy="199.49" r="2.25"/>
+      <circle cx="84.04" cy="194.84" r="2.25"/>
+      <circle cx="76.58" cy="189.28" r="2.25"/>
+      <circle cx="69.81" cy="182.90" r="2.25"/>
+      <circle cx="63.83" cy="175.77" r="2.25"/>
+      <circle cx="58.72" cy="168.00" r="2.25"/>
+      <circle cx="54.54" cy="159.69" r="2.25"/>
+      <circle cx="51.36" cy="150.94" r="2.25"/>
+      <circle cx="49.22" cy="141.89" r="2.25"/>
+      <circle cx="48.14" cy="132.65" r="2.25"/>
+      <circle cx="48.14" cy="123.35" r="2.25"/>
+      <circle cx="49.22" cy="114.11" r="2.25"/>
+      <circle cx="51.36" cy="105.06" r="2.25"/>
+      <circle cx="54.54" cy="96.31" r="2.25"/>
+      <circle cx="58.72" cy="88.00" r="2.25"/>
+      <circle cx="63.83" cy="80.23" r="2.25"/>
+      <circle cx="69.81" cy="73.10" r="2.25"/>
+      <circle cx="76.58" cy="66.72" r="2.25"/>
+      <circle cx="84.04" cy="61.16" r="2.25"/>
+      <circle cx="92.10" cy="56.51" r="2.25"/>
+      <circle cx="100.64" cy="52.82" r="2.25"/>
+      <circle cx="109.55" cy="50.16" r="2.25"/>
+      <circle cx="118.71" cy="48.54" r="2.25"/>
+      <g transform="translate(88.00,171.69) scale(0.132,-0.132)"><path d="M252 620H198Q114 620 85.5 597.0Q57 574 39 492H15L21 662H585L591 492H567Q550 575 521.5 597.5Q493 620 408 620H354V109Q354 54 371.0 38.0Q388 22 450 19V0H158V19Q220 23 236.0 39.5Q252 56 252 120Z"/></g>
+  </g>
+  <g clip-path="url(#tCoin)" mask="url(#tHollow)">
+    <g fill="none" stroke="currentColor" stroke-width="6.0" stroke-linecap="butt" stroke-linejoin="round">
+      <path d="M57,8 L67,44 L52,78 L65,118 L51,158 L63,198 L55,250"/>
+      <path d="M58,197 L101,208 L151,189 L201,201 L250,190"/>
+      <path d="M188,14 L178,52 L190,74 L181,98"/>
+    </g>
+  </g>
+</svg>

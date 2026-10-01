@@ -25,6 +25,7 @@ import { buildRecoverabilityReportHtml } from "./recoverabilityReport";
 import { RecoveryGraph } from "./RecoveryGraph";
 import { StageRail } from "./StageRail";
 import { TechnicalDetails } from "./TechnicalDetails";
+import { TesseraMark } from "./TesseraMark";
 import { usePacedEvents } from "./usePacedEvents";
 
 // Hardcoded to this project's own demo topology (see infra/docker-compose.yml)
@@ -253,6 +254,7 @@ export function App() {
   return (
     <main className="app">
       <h1>
+        <TesseraMark className="h1-mark" />
         Tessera <span className="h1-credit">by SpaceDev</span>
       </h1>
 
