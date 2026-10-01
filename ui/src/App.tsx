@@ -253,7 +253,7 @@ export function App() {
   return (
     <main className="app">
       <h1>
-        SpaceDev <span className="h1-project">— canton-dr</span>
+        Tessera <span className="h1-credit">by SpaceDev</span>
       </h1>
 
       {loading && status === null && <p className="loading">Loading…</p>}

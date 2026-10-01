@@ -22,7 +22,7 @@ export function Positions({ positions }: PositionsProps) {
   return (
     <section className="positions">
       <h2>What's at stake</h2>
-      <p className="hint">Real positions owner holds against these counterparties — this is what a lost backup loses.</p>
+      <p className="hint">Real positions owner holds against these counterparties — what losing the participant would cost you.</p>
       <table>
         <thead>
           <tr>

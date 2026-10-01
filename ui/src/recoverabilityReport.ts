@@ -68,7 +68,7 @@ export function buildRecoverabilityReportHtml(status: StatusView, positions: Pos
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>canton-dr Recoverability Report</title>
+<title>Tessera Recoverability Report</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -121,7 +121,7 @@ export function buildRecoverabilityReportHtml(status: StatusView, positions: Pos
 <body>
   <p class="print-hint">Press Cmd/Ctrl+P to print or save as PDF.</p>
 
-  <h1>canton-dr — Recoverability Report</h1>
+  <h1>Tessera — Recoverability Report</h1>
   <div class="subtitle">Policy: ${escapeHtml(status.policyId)} &middot; Owner: ${escapeHtml(status.owner)}</div>
 
   <div class="verdict">
@@ -171,7 +171,7 @@ export function buildRecoverabilityReportHtml(status: StatusView, positions: Pos
     degraded mode, it is the complete absence of recovery.</li>
   </ul>
 
-  <footer>Generated ${escapeHtml(generatedAt)} from live data (canton-dr dashboard /status, /positions).</footer>
+  <footer>Generated ${escapeHtml(generatedAt)} from live data (Tessera dashboard /status, /positions).</footer>
 </body>
 </html>`;
 }

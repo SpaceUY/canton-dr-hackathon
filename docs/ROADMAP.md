@@ -1,4 +1,4 @@
-# Roadmap — canton-dr (original build checklist)
+# Roadmap — Tessera (original build checklist)
 
 > **Historical.** This is the checklist for the original 7-step plan, kept as a record of how the
 > vertical slice was built and what was found at each step. It predates identity recovery, which

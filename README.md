@@ -1,29 +1,44 @@
-# canton-dr
+# Tessera
 
-**Verifiable, decentralized disaster recovery for Canton Network nodes.**
+**Operational continuity for Canton participants.** Survive participant loss without losing your
+operational identity.
+
+In Rome, a *tessera hospitalis* was a token broken into pieces, one for each party to an alliance.
+Fitting the pieces back together proved the bond. Tessera does the same with a Canton party's
+secrets: its signing key and its backup key are split among custodians, and no single piece means
+anything. Only k pieces put back together prove who the owner is, and give the owner back the
+ability to act. It is Shamir's secret sharing, two thousand years early.
+
+Tessera belongs to the disaster-recovery category. What it is built for is the part that category
+usually leaves out: after the participant is gone, the same party keeps operating, with the same
+identity, its state and counterparties that don't have to do anything.
 
 > The network doesn't store your data. It stores the proof that your data is recoverable — and the
 > custodian network gives you back not just your data, but your party's ability to act.
 
 Built for the Canton Network hackathon (AppsFactory). Everything described as working below runs
-against the real Canton **3.5.18** open-source binary in Docker. The disaster in the demo is real: a
-participant container is killed and its disk volume deleted, not simulated.
+against the real Canton **3.5.18** open-source binary in Docker. The participant loss in the demo is
+real: a participant container is killed and its disk volume deleted, not simulated.
 
 ---
 
 ## The problem
 
 Canton is private by design: each participant keeps its contracts (its *Active Contract Set*, ACS)
-on its own node, and the network never holds them in readable form. That is also a single point of
-failure:
+on its own node, and the network never holds them in readable form. That also makes the participant
+a single point of failure for everything its parties do:
 
-- If a node's database is corrupted and its backups are lost, the state is gone — nobody else holds
+- If a node's database is corrupted and its backups are lost, the state is gone. Nobody else holds
   a copy.
 - Even with a backup, an operator can't tell whether it is still restorable until they need it.
-- Even with the data restored, the party still needs to sign again. If its key died with the
-  node, the restored contracts are useless.
+- Even with the data restored, the party can't operate. If its signing key died with the node,
+  nobody can act for it. What is really lost is the party's **operational identity**, not just its
+  data.
+- Getting a participant back by hand means Canton's repair procedures. Canton's own documentation
+  calls them ["dangerous and complex"](https://github.com/digital-asset/canton/blob/main/docs-open/src/sphinx/participant/howtos/recover/repairing.rst)
+  and strongly advises running them only "with the help of technical support".
 
-## What canton-dr does
+## What Tessera does
 
 1. **Backs up the ACS privately.** The owner's agent exports its party's ACS and encrypts it with
    AES-256-GCM. It replicates the ciphertext to several custodians (other participants' agents)
@@ -40,15 +55,15 @@ failure:
 
    Blobs travel off-ledger, over HTTP.
 4. **Recovers onto a different, live participant**, in four stages shown live in the dashboard:
-   1. **Identity key rebuilt.** The demo's disaster deletes the owner's private key along with the
-      node. `recover` rebuilds it from k custodians' identity-key shares, and checks it against
+   1. **Identity key rebuilt.** In the demo, the participant loss deletes the owner's private key
+      along with the node. `recover` rebuilds it from k custodians' identity-key shares, and checks it against
       the owner party a custodian sees on its own ledger. It never reads a key from disk, and it
       touches nothing if this stage fails.
    2. **Identity re-authorized.** The owner party is re-hosted on the new participant with a
       topology transaction signed by the rebuilt key. The dead node takes no part.
    3. **Data key reconstructed** from k custodian shares.
    4. **State imported.** The decrypted ACS goes into the new participant. That is the state as of
-      the last backup, not as of the disaster (see the limitations).
+      the last backup, not as of the participant loss (see the limitations).
 5. **Lets the counterparties verify the result.** Each custodian's participant and the recovered
    one independently hash the state they share (Canton's ACS commitments, once per reconciliation
    interval, here 1 minute), and Canton compares the two. The dashboard's "Counterparty
@@ -70,8 +85,8 @@ failure:
 | Party re-hosted on a different participant after its node's disk is deleted | **Real**, demo path |
 | Recovered owner signs a new contract from the new node | **Real**, demo path |
 | On-ledger policy, custody receipts, challenges, recovery requests (Daml) | **Real**. See the limitations on what the challenge proves |
-| Owner's private key deleted in the disaster, rebuilt from custodians' Shamir shares | **Real**, demo path. `make destroy-node` deletes `owner.der`; `recover` rebuilds it from 2 identity-key shares and writes it back only after verifying it |
-| ACS commitments match between independent participants | **Real** (`check-commitment`, before the disaster) |
+| Owner's private key deleted with the participant, rebuilt from custodians' Shamir shares | **Real**, demo path. `make destroy-node` deletes `owner.der`; `recover` rebuilds it from 2 identity-key shares and writes it back only after verifying it |
+| ACS commitments match between independent participants | **Real** (`check-commitment`, before the participant loss) |
 | Recovered state checked against the counterparties' ACS commitments | **Real**, demo path. After recovery, the dashboard shows Canton's own comparison between each custodian's node and the recovered node. It gave `Match`, with zero disagreeing periods, in 2 of 2 measured runs, 40–75 s after recovery. It is shown on screen, not a gate: `recover` doesn't wait for it. See the limitations for what it covers |
 | Degraded backups automatically detected and re-replicated | **Not implemented** |
 | Running on DevNet / MainNet | **Not done.** Local Docker topology only |
@@ -234,7 +249,7 @@ These are stated rather than hidden.
     after recovery.
 - **What's recovered is an external party**, onto a different participant. The dead participant's
   own node identity and any *local* parties it hosted aren't recovered.
-- **The owner's public party id survives the disaster** (`owner.party-id.txt`): it's public
+- **The owner's public party id survives the participant loss** (`owner.party-id.txt`): it's public
   information that every counterparty sees on-ledger, and the dashboard reads it. The private key
   does not survive. After recovery, the rebuilt key is written back to the owner-side key store,
   so the owner can keep signing.
