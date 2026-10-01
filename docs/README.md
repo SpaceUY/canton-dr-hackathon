@@ -50,7 +50,9 @@ pnpm dev
 
 Open the URL it prints (`http://localhost:5173`) — you'll see the live dashboard: a metrics strip,
 the system map (participant1 shown genuinely alive, polled every 3s), real positions, real
-custodian status, and a **Recover** button.
+custodian status, a **Recover** button, and a **Download recoverability report** button (generates
+a standalone, printable HTML snapshot of the current verdict/policy/custodians client-side, from
+the same `/status` and `/positions` data already on screen — no extra call).
 
 ## Running the demo end to end
 
@@ -177,7 +179,7 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
 | `distribute --source <p> --party <hint> --policy-id <id> --endpoints <url,...> --k <n>` | Encrypts the ACS, Shamir-splits the encryption key, pushes the blob + a key share to each endpoint. |
 | `distribute-identity --policy-id <id> --endpoints <url,...> --k <n> [--key-path <path>]` | Same idea, for the party's own identity key — split and distributed independently of the data key, no shared dependency between the two. |
 | `accept-custody --as <name> --participant <p> --custodian <hint> --owner-participant <p> --owner <hint> --policy-id <id>` | A custodian records on-ledger that it received its blob+share (`--as` matches an `agentN`, reading straight from that agent's own custody volume). |
-| `challenge --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | Owner issues a challenge asking a custodian to prove it still holds its fragment. |
+| `challenge --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | Owner issues a challenge asking a custodian to prove it still holds its fragment. The response is recorded on-ledger but not yet cryptographically verified by anyone — see the [root README's limitations](../README.md#known-limitations). |
 | `respond --as <name> --participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | The named custodian answers an open challenge with a real proof. |
 | `challenge-loop --owner-participant <p> --owner <hint> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --interval-seconds <n>` | Runs `challenge` on a timer against every listed custodian (long-running). |
 | `recover --target <p> --target-ledger-api <host:port> --loader-participant <console> --policy-id <id> --endpoints <url,...> --k <n> --identity-custodian <p:port:hint>` | The main event: rebuilds the owner's identity key from k identity-key shares (verified against `--identity-custodian`'s ledger view, never read from disk), re-authorizes the party's identity on `--target` (propose/sign/load a topology transaction via Interactive Submission), reconstructs the encryption key from k shares, decrypts and imports the ACS. An unreachable custodian is skipped and the next listed endpoint is tried; if fewer than k shares arrive, it fails with a clear message. Note: with the demo's endpoints (two custodians, k=2) there is no spare, so one custodian down means no recovery. |
@@ -236,6 +238,16 @@ undo), the state lives in named volumes: `participant1_data`, `participant4_data
   and just re-run; every step is idempotent. This is a real, observed failure mode (Canton itself
   logging "late processing" under sustained load, or an internal `proposeAndAuthorize` timeout), not
   something wrong with your setup.
+- **`bootstrap` hangs with no log output for minutes**: observed under heavy concurrent host load
+  (several other builds/processes running at once) — `docker stats` showed one participant pinned
+  near 230% CPU with no bootstrap progress for 8+ minutes. Cause: the host, not Canton or Docker
+  itself. Close other heavy processes, confirm `docker stats` looks calm, and re-run; a clean,
+  otherwise-idle attempt completed normally.
+- **`participant1` exits and its logs show `DB_CONNECTION_LOST` followed by a `FATAL` crash**: its
+  H2 storage uses a single-connection pool, and a health-check that can't get that connection within
+  ~5s crashes the node rather than retrying. Same cause as above — real host contention (CPU or disk
+  I/O) starving that one connection — not a bug in the reset sequence. Same fix: let the load settle,
+  re-run `make demo-reset` from scratch (the crashed node's volume is gone anyway once you do).
 - **Neither `dpm` nor `damlc` is on `PATH`**: `make build-dar` handles this itself (downloads `dpm`
   into `daml/.dpm-cache/`, see Prerequisites) — you shouldn't need to install anything by hand. If
   you've built before and change `daml/*.daml`, bump `version` in `daml/daml.yaml` first (Canton

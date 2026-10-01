@@ -43,7 +43,8 @@ a single point of failure for everything its parties do:
 1. **Backs up the ACS privately.** The owner's agent exports its party's ACS and encrypts it with
    AES-256-GCM. It replicates the ciphertext to several custodians (other participants' agents)
    and splits the encryption key k-of-n with Shamir Secret Sharing. No custodian ever sees
-   plaintext, and fewer than k shares reveal nothing.
+   plaintext, and fewer than k shares reveal nothing. (The custodian store itself has no
+   authentication in this demo topology — see [the limitations](#known-limitations).)
 2. **Protects the identity the same way.** The owner is a Canton *external party*, meaning its
    signing key lives outside any participant. That key is Shamir-split to the same custodians as
    independent shares.
@@ -74,6 +75,10 @@ a single point of failure for everything its parties do:
 6. **Proves the party is operating again.** A counterparty with no special handling proposes a new
    contract. The recovered owner accepts it, signing with its own identity from the new node. The
    resulting contract's only signatory is the owner.
+7. **Hands over a recoverability report.** The dashboard's "Download recoverability report" button
+   generates a standalone, printable HTML page from the same live data on screen: the verdict
+   (recoverable or not, against the real custodian count and k), the policy, and what the report
+   does *not* cover. No new backend call — it's built from `/status` and `/positions`.
 
 ## What's real and what isn't
 
@@ -139,10 +144,16 @@ permissions and more): **[docs/DECISIONS.md](docs/DECISIONS.md)**.
 ## Quick start
 
 Prerequisites:
-- **Docker Desktop with at least 10 GB of memory.** The stack runs 5 Canton JVMs plus 3 agents and
-  the dashboard.
+- **Docker Desktop with at least 10 GB of memory and 4+ CPUs allocated.** The stack runs 5 Canton
+  JVMs plus 3 agents and the dashboard.
 - **Node.js and pnpm** for the UI.
 - **`curl`.**
+- **Run it on an otherwise-quiet machine.** `participant1`'s storage (H2) uses a single-connection
+  pool; under real host CPU contention (other heavy builds, a loaded browser, a video call) we've
+  seen `bootstrap` hang for minutes with no log output, and once seen `participant1` crash fatally
+  on a database-connection timeout. Both are host load, not a bug — see docs/README.md's
+  Troubleshooting — but closing other heavy processes before `make demo-reset` (and before the live
+  demo) avoids it rather than requiring a retry.
 
 Nothing else needs installing: `make build-dar` fetches the Daml tooling (`dpm`) locally if it
 isn't already on `PATH`.
@@ -180,6 +191,7 @@ The full run guide, CLI and HTTP API reference, and troubleshooting are in
 | 1:05 | **Recover.** The identity key is rebuilt from the 2 independent custodians, the identity is re-authorized, then the data key is reconstructed and the state imported. The owner's own copy (`agent1`) is skipped on purpose. | **Recover** button, or `docker compose run --rm agent recover ...` |
 | 3:00 | **Counterparty transacts.** The recovered owner signs a new contract itself. | **Counterparty transacts with recovered owner** button |
 | ~4:00 | **Counterparty verification.** Canton's own ACS-commitment comparison between each custodian's node and the recovered node: waiting, then `Match`. It is visible from the moment recovery succeeds. | Panel under the signed contract, no click |
+| optional | **Recoverability report.** Downloadable at any point, not tied to a specific beat — shows the verdict and policy as of that moment. | **Download recoverability report** button |
 
 The nodes are always killed from a terminal, never from the dashboard. The dashboard is an
 unauthenticated local API and deliberately cannot kill containers.
