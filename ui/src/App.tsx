@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchCiphertext,
+  fetchCommitments,
   fetchParticipant1Alive,
   fetchPositions,
   fetchRecoverProgress,
@@ -8,11 +9,13 @@ import {
   triggerCounterpartyTx,
   triggerRecover,
   type CiphertextSample,
+  type CommitmentWatchView,
   type CounterpartyTxResult,
   type PositionView,
   type RecoverEvent,
   type StatusView,
 } from "./api";
+import { CommitmentPanel } from "./CommitmentPanel";
 import { CustodianList } from "./CustodianList";
 import { IdentityCompare } from "./IdentityCompare";
 import { MetricsStrip } from "./MetricsStrip";
@@ -37,7 +40,8 @@ const RECOVER_ENDPOINTS = ["http://agent2:4002", "http://agent3:4003"];
 const RECOVER_K = 2;
 
 // recover.ts's own return shape: "RECOVER_OK: reconstructed key from X/Y
-// shares; REHOST_OK: ...; RESTORE_OK: <path> imported into <target>". Y
+// shares; RECOVER_IDENTITY_OK: reconstructed <party> from I/Y identity-key
+// shares, ...; REHOST_OK: ...; RESTORE_OK: <path> imported into <target>". Y
 // there is endpoints.length — how many custodians this particular recovery
 // attempt queried (this demo deliberately queries only 2 of the 3, skipping
 // the owner's own share, to prove the threshold — see RECOVER_ENDPOINTS
@@ -51,12 +55,25 @@ const RECOVER_K = 2;
 // nothing is lost, only the summary.
 function parseRecoverResult(raw: string, totalFragments: string): string | null {
   const match =
-    /^RECOVER_OK: reconstructed key from (\d+)\/\d+ shares; REHOST_OK: .+; RESTORE_OK: .+ imported into (\S+)$/.exec(
+    /^RECOVER_OK: reconstructed key from (\d+)\/\d+ shares; RECOVER_IDENTITY_OK: reconstructed \S+ from (\d+)\/\d+ identity-key shares[^;]*; REHOST_OK: .+; RESTORE_OK: .+ imported into (\S+)$/.exec(
       raw,
     );
   if (match === null) return null;
-  const [, used, target] = match;
-  return `Reconstructed the key from ${used} of ${totalFragments} fragments and restored the state onto ${target}.`;
+  const [, used, identityUsed, target] = match;
+  return (
+    `Rebuilt the owner's identity key from ${identityUsed} of ${totalFragments} fragments and the data key ` +
+    `from ${used} of ${totalFragments}, and restored the state onto ${target}.`
+  );
+}
+
+// The party id recover() derived from the identity key it rebuilt out of the
+// custodians' shares (agent/src/recoverIdentity.ts: matched by fingerprint
+// against a custodian's own ledger view) — the "after" side of the identity
+// comparison. null if the result doesn't carry it, which the comparison
+// shows as "identity not reported" rather than assuming a match.
+function parseRecoveredPartyId(raw: string): string | null {
+  const match = /RECOVER_IDENTITY_OK: reconstructed (\S+) from /.exec(raw);
+  return match?.[1] ?? null;
 }
 
 // Canton's own error strings can run to hundreds of characters of nested
@@ -85,6 +102,15 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [recovering, setRecovering] = useState(false);
   const [recoverOutcome, setRecoverOutcome] = useState<RecoverOutcome | null>(null);
+  // The owner's party id as known BEFORE recovery (the public id file that
+  // survived the disaster, via /status), frozen at the moment Recover is
+  // clicked: recovery writes the verified id back to that same file, so
+  // reading /status afterwards would make "before" equal "after" by
+  // construction instead of by comparison.
+  const [ownerBeforeRecovery, setOwnerBeforeRecovery] = useState<string | null>(null);
+  // Canton's ACS-commitment comparison between each custodian's node and the
+  // recovered one, watched by the dashboard after a successful recovery.
+  const [commitments, setCommitments] = useState<CommitmentWatchView | null>(null);
   const [recoverProgress, setRecoverProgress] = useState<RecoverEvent[]>([]);
   const [recoverStartedAt, setRecoverStartedAt] = useState<number | null>(null);
   const [recoverEndedAt, setRecoverEndedAt] = useState<number | null>(null);
@@ -135,6 +161,8 @@ export function App() {
 
   const handleRecover = async () => {
     if (status === null) return;
+    setOwnerBeforeRecovery(status.owner);
+    setCommitments(null);
     setRecovering(true);
     setRecoverOutcome(null);
     setRecoverProgress([]);
@@ -147,10 +175,13 @@ export function App() {
     // under one polling interval (e.g. re-hosting an already-hosted party is
     // near-instant) — if the POST /recover promise resolves before the
     // first scheduled poll ever fires, recoverProgress stays empty for the
-    // whole thing. Poll immediately on start, and once more right after the
+    // whole thing. Poll shortly after start, and once more right after the
     // request settles, so the full event list is captured even when the
-    // operation is nearly instant.
-    void fetchRecoverProgress().then(setRecoverProgress);
+    // operation is nearly instant. "Shortly", not immediately: the server
+    // only resets its event list once it has read this POST, and an
+    // immediate poll on a retry would show the failed attempt's events
+    // (e.g. "Custodian 3 unreachable") as if they belonged to this one.
+    setTimeout(() => void fetchRecoverProgress().then(setRecoverProgress), 250);
     progressPollRef.current = setInterval(() => {
       void fetchRecoverProgress().then(setRecoverProgress);
     }, 400);
@@ -175,6 +206,20 @@ export function App() {
   };
 
   const succeeded = recoverOutcome?.kind === "success";
+
+  // Polled only after a successful recovery, and only until the watch
+  // settles (done/timeout/error) - the verdict can take anywhere from ~40s
+  // to a couple of reconciliation intervals, and the panel shows every
+  // intermediate state as it is.
+  const commitmentsSettled = commitments !== null && commitments.status !== "watching" && commitments.status !== "idle";
+  useEffect(() => {
+    if (!succeeded || commitmentsSettled) return;
+    const load = () => void fetchCommitments().then(setCommitments).catch(() => {});
+    load();
+    const id = setInterval(load, 2000);
+    return () => clearInterval(id);
+  }, [succeeded, commitmentsSettled]);
+  const recoveredPartyId = succeeded && recoverOutcome !== null ? parseRecoveredPartyId(recoverOutcome.raw) : null;
   const failed = recoverOutcome?.kind === "error";
 
   // Opened as a Blob URL in a new tab, not downloaded directly — a jury
@@ -264,6 +309,12 @@ export function App() {
                   )}
                 </div>
               )}
+
+              <IdentityCompare
+                beforePartyId={ownerBeforeRecovery ?? status.owner}
+                afterPartyId={recoveredPartyId}
+                recovered={succeeded}
+              />
             </section>
 
             <section className="dashboard-right">
@@ -306,10 +357,10 @@ export function App() {
                   </div>
                 )}
               </div>
+
+              <CommitmentPanel view={commitments} />
             </section>
           </div>
-
-          <IdentityCompare ownerPartyId={status.owner} recovered={succeeded} />
 
           <TechnicalDetails status={status} ciphertext={ciphertext} />
         </>

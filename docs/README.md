@@ -58,13 +58,21 @@ The beat-by-beat 5-minute version, with measured timings, is in the
 [root README](../README.md#the-demo-about-5-minutes). Step by step, once `make demo-reset` has left
 you in a clean pre-disaster state:
 
-**1. Destroy the node for real** (not just `docker stop` — Canton's JVM does a graceful shutdown of
-variable length; `-t 1` forces it fast and is more honest to what a real disaster does anyway):
+**1. Destroy the node for real**, from the repo root:
 
 ```sh
-cd infra
-docker stop -t 1 infra-participant1-1 && docker rm infra-participant1-1 && docker volume rm infra_participant1_data
+make destroy-node
 ```
+
+It runs these steps:
+
+1. Kills `participant1` with `docker stop -t 1`. A plain `docker stop` waits for Canton's
+   variable-length graceful shutdown, and a real disaster doesn't wait either.
+2. Removes the container and deletes its disk volume (`infra_participant1_data`).
+3. Deletes the owner's private key file (`owner.der` in `infra_owner_identity`).
+
+After that, the key exists only as the custodians' Shamir shares. The public
+`owner.party-id.txt` is left in place: it's on-ledger anyway, and the dashboard reads it.
 
 The UI's system map detects this on its own within a few seconds (`GET /participant1-status`
 polling) — nothing to do on your side.
@@ -72,10 +80,24 @@ polling) — nothing to do on your side.
 **2. Recover** — click the button in the UI, or run the equivalent directly:
 
 ```sh
+cd infra
 docker compose run --rm agent recover --target participant4 --target-ledger-api participant4:5043 \
   --loader-participant participant2 --policy-id demo \
-  --endpoints http://agent2:4002,http://agent3:4003 --k 2
+  --endpoints http://agent2:4002,http://agent3:4003 --k 2 \
+  --identity-custodian participant2:5023:custodian2
 ```
+
+`recover` runs four stages:
+
+1. It rebuilds the owner's identity key from the custodians' identity-key shares. It checks the
+   key against the `BackupPolicy.owner` that `--identity-custodian` sees on its own ledger, then
+   writes it back to the owner-side key store. It refuses to overwrite a *different* key.
+2. It re-authorizes the identity on the target.
+3. It reconstructs the data key.
+4. It imports the state.
+
+The first stage is read-only. If fewer than k identity shares come back, recovery fails there,
+before any topology change.
 
 This deliberately queries only `agent2`/`agent3` (the two real, independent custodians) — `agent1`
 (the owner's own backup copy) is never touched, so the recovery genuinely depends on the 2-of-2
@@ -158,8 +180,8 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
 | `challenge --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | Owner issues a challenge asking a custodian to prove it still holds its fragment. |
 | `respond --as <name> --participant <p> --custodian <hint> --policy-id <id> --challenge-id <id>` | The named custodian answers an open challenge with a real proof. |
 | `challenge-loop --owner-participant <p> --owner <hint> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --interval-seconds <n>` | Runs `challenge` on a timer against every listed custodian (long-running). |
-| `recover --target <p> --target-ledger-api <host:port> --loader-participant <console> --policy-id <id> --endpoints <url,...> --k <n>` | The main event: re-authorizes the party's identity on `--target` (propose/sign/load a topology transaction via Interactive Submission), reconstructs the encryption key from k shares, decrypts and imports the ACS. An unreachable custodian is skipped and the next listed endpoint is tried; if fewer than k shares arrive, it fails with a clear message. Note: with the demo's endpoints (two custodians, k=2) there is no spare, so one custodian down means no recovery. |
-| `recover-identity --policy-id <id> --endpoints <url,...> --k <n> --custodian-participant <p> --custodian <hint> [--key-path <path>]` | Rebuilds *only* the identity key from its own Shamir shares (a separate disaster: the key file itself was lost, not the whole node) — verifies the reconstructed key against a custodian's own ledger view before trusting it. |
+| `recover --target <p> --target-ledger-api <host:port> --loader-participant <console> --policy-id <id> --endpoints <url,...> --k <n> --identity-custodian <p:port:hint>` | The main event: rebuilds the owner's identity key from k identity-key shares (verified against `--identity-custodian`'s ledger view, never read from disk), re-authorizes the party's identity on `--target` (propose/sign/load a topology transaction via Interactive Submission), reconstructs the encryption key from k shares, decrypts and imports the ACS. An unreachable custodian is skipped and the next listed endpoint is tried; if fewer than k shares arrive, it fails with a clear message. Note: with the demo's endpoints (two custodians, k=2) there is no spare, so one custodian down means no recovery. |
+| `recover-identity --policy-id <id> --endpoints <url,...> --k <n> --custodian-participant <p> --custodian <hint> [--key-path <path>]` | Rebuilds *only* the identity key from its own Shamir shares (the same first stage `recover` runs, on its own — for when only the key file was lost, not the node) — verifies the reconstructed key against a custodian's own ledger view before trusting it. |
 | `counterparty-tx --as <custodian-hint> --participant <p> --owner-participant <host:port> [--label <text>]` | The closing proof: a counterparty proposes a contract naming the recovered `owner` as observer, then `owner` exercises the acceptance themselves via Interactive Submission from `--owner-participant` (wherever they're currently hosted) — the result's sole signatory is genuinely `owner`, not just an observer. |
 | `request-recovery --owner-participant <p> --owner <hint> --custodian-participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | Owner formally asks a custodian to hand back its share (on-ledger `RecoveryRequest`) — distinct from just calling `recover` directly. |
 | `respond-recovery --as <name> --participant <p> --custodian <hint> --policy-id <id> --request-id <id>` | The named custodian answers an open `RecoveryRequest`. |
@@ -167,7 +189,7 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
 | `backup --source <p> --party <hint> --out <path>` / `restore --target <p> --in <path>` | Raw `repair.export_acs`/`import_acs`, scoped to one party — the low-level primitive `distribute`/`recover` build on. |
 | `serve --port <port>` | Starts a custodian's own blob/share HTTP store (what `agent1/2/3` run). |
 | `dashboard --port <port> --custodian <p:port:hint> [--custodian ...] --policy-id <id> --recover-target <p> --recover-target-ledger-api <host:port> --recover-endpoints <url,...> --recover-loader-participant <console> --counterparty-tx-as <custodian-hint> --counterparty-tx-participant <host:port>` | Starts the owner-facing read API + recovery trigger the UI talks to. `--counterparty-tx-*` fixes who plays "the counterparty" for `POST /counterparty-tx` — not trusted from the request body, same reasoning as `--recover-target`. |
-| `verify-demo-state` | No args. Fails loudly, naming exactly what's wrong, unless the environment is genuinely a fresh pre-disaster state (owner alive+hosted on `participant1`, not yet on `participant4`, policy/custody/challenges/positions all real and current). |
+| `verify-demo-state` | No args. Fails loudly, naming exactly what's wrong, unless the environment is genuinely a fresh pre-disaster state (owner alive+hosted on `participant1`, not yet on `participant4`, policy/custody/challenges/positions all real and current, and the owner's identity key really rebuildable — in memory — from the two custodians' shares the demo will use). |
 
 ## Dashboard HTTP API (`http://localhost:4010`, no auth — trusted local network only)
 
@@ -177,7 +199,8 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
 | `GET /positions` | The 3 real `Position` contracts (counterparty, signed amount, currency). |
 | `GET /ciphertext` | Real encrypted bytes fetched live from an actual custodian's own volume. |
 | `GET /participant1-status` | `{alive: boolean}` — real reachability check, not a scripted state. |
-| `GET /recover-progress` | The current recovery's real event stream (rehost sub-steps, custodian query/response, the 3 milestones), reset at the start of every `POST /recover`. |
+| `GET /recover-progress` | The current recovery's real event stream (rehost sub-steps, custodian query/response tagged `identity`/`data`, the 4 milestones), reset at the start of every `POST /recover`. |
+| `GET /commitments` | After a successful `POST /recover`: Canton's own ACS-commitment comparison between each custodian's participant and the recovery target, per reconciliation period since the recovery started (`NotCompared` = the recovered node's commitment hasn't arrived yet, `Match`, `Mismatch`), plus the configured reconciliation interval. Watched by one long-lived, read-only console process that stops once every pair has matched (or after 10 minutes). `status`: `idle`/`watching`/`done`/`timeout`/`error`. |
 | `POST /recover` `{targetParticipant, endpoints, k}` | Triggers `recover()` for real; `targetParticipant`/`endpoints` are validated against the fixed values the dashboard was started with, not trusted blindly from the request body. |
 | `POST /counterparty-tx` (no body) | Triggers the demo's closing proof: the fixed counterparty proposes a contract naming the recovered owner as observer, then the owner signs the acceptance themselves. Zero client-trusted input — actor and participant are fixed at dashboard startup, only the label varies (auto-generated). Returns the real proposal/record contract ids and party ids. |
 
@@ -190,6 +213,8 @@ that ephemeral, server-less container instead (`ECONNREFUSED`).
   agent-based docker-compose services (`agent`, `agent1/2/3`, `dashboard`, `seed`) share a single
   image tag, so this rebuilds all of them at once — there's no way for one to be stale while
   another is fresh.
+- **`make destroy-node`** — the demo's disaster (see "Running the demo end to end"). Run from a
+  terminal, never from the dashboard.
 - **`make demo-reset`** — see Quick Start above. Full environment reset to a verified pre-disaster
   state, in one command.
 

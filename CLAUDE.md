@@ -41,11 +41,14 @@ they still hold their fragment, so a degraded backup gets detected before disast
 (Today the challenge response is recorded but not verified, and nothing re-replicates
 automatically — both are declared limitations in `README.md`.)
 
-ACS commitments — the hashes counterparties already exchange about their shared state — show
-that two independent nodes agree on that state (`agent check-commitment`, real `Match` results).
-They are **not** part of the `recover` pipeline: the recovery target is a different participant
-with no commitment history, and the command doesn't assert `Match`. Don't claim that the
-recovered state is automatically validated against commitments.
+ACS commitments — the hashes counterparties already exchange about their shared state — are
+checked after recovery: the dashboard watches Canton's comparison between each custodian's
+participant and the recovered one (`GET /commitments`, "Counterparty verification" panel).
+Measured `Match` in 2 of 2 runs, 40–75 s after recovery, zero mismatching periods. Say it
+precisely: a post-recovery verification, not a gate inside `recover`; it covers only state
+shared with the custodians' participants; it compares periods after recovery (the dead node's own
+history is gone). A `Mismatch` is real signal, not noise — the first time it happened it caught a
+backup taken before the custodians' receipts existed.
 
 **One-line idea:** the network doesn't store your data, it stores the proof that your data is
 recoverable and correct.
@@ -78,9 +81,9 @@ recoverable and correct.
   integration in progress" wording was satisfied on 2026-09-28 (identity + state + a
   counterparty transacting, all in the real pipeline). Two precisions still apply: what's
   re-hosted is an **external party** onto a different participant (not the dead participant's
-  own node identity), and until `recover` reconstructs the identity key from its Shamir shares
-  (planned — today it reads the key file from the owner-side volume), don't claim the demo
-  recovers the identity key from the custodians.
+  own node identity), and the identity key is rebuilt from the custodians' Shamir shares because
+  the demo's disaster deletes `owner.der` (`make destroy-node`) — `recover` never reads a key
+  from disk. The owner's public party id file survives on purpose (it's on-ledger anyway).
 
 ## Known limitations (state them, don't hide them)
 
@@ -153,8 +156,9 @@ purpose. This same rule applies to any future "destroy node" demo enhancement.
 
 `participant1` persists to disk (H2), by design, not memory — so the destruction step is
 stop + remove the container, then `docker volume rm infra_participant1_data`, not just
-`docker stop`. This is also more honest: a real disaster loses or corrupts the disk, it
-doesn't just crash the process. See `docs/README.md` ("Running the demo end to end") for the exact command.
+`docker stop`, and it also deletes the owner's private key file. All of it is one command,
+`make destroy-node`. This is also more honest: a real disaster loses or corrupts the disk, it
+doesn't just crash the process. See `docs/README.md` ("Running the demo end to end").
 
 ## References
 

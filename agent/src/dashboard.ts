@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { CommitmentWatch } from "./commitmentWatch.js";
 import { counterpartyTx } from "./counterpartyTx.js";
 import type { CustodianRef } from "./createPolicy.js";
 import { queryActive, resolveParty, type ActiveContract } from "./ledger.js";
-import { loadExternalPartyIdentity } from "./externalParty.js";
+import { readExternalPartyId } from "./externalParty.js";
 import { recover, type RecoverEvent } from "./recover.js";
 
 // One demo operator, one recovery at a time — a single shared slot is
@@ -12,6 +13,13 @@ import { recover, type RecoverEvent } from "./recover.js";
 // landing, instead of a single opaque spinner for the ~30-90s a real
 // re-authorization + restore can take.
 let recoverEvents: RecoverEvent[] = [];
+
+// After a successful recovery: each custodian's participant and the
+// recovered one independently hash the state they share, and Canton
+// compares the two (ACS commitments). Watched here so the UI can show the
+// verdict - see agent/src/commitmentWatch.ts. Restarted by every
+// successful /recover.
+const commitmentWatch = new CommitmentWatch();
 
 // Same identity seed.ts allocated `owner` under — used to know WHO owner is
 // (a local file read, no network, never affected by owner's own participant
@@ -185,6 +193,11 @@ async function handle(
       return;
     }
 
+    if (req.method === "GET" && req.url === "/commitments") {
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(commitmentWatch.current()));
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/recover") {
       const body = JSON.parse((await readBody(req)).toString() || "{}") as {
         targetParticipant?: string;
@@ -199,6 +212,8 @@ async function handle(
       }
 
       recoverEvents = [];
+      commitmentWatch.stop();
+      const recoverStartedAt = new Date();
       const result = await recover({
         targetParticipant: body.targetParticipant as string,
         targetLedgerApi: recoverTargetLedgerApi,
@@ -206,10 +221,21 @@ async function handle(
         policyId,
         endpoints: body.endpoints as string[],
         threshold: body.k as number,
+        identityCustodian: identityCustodian(statusCustodians),
         onProgress: (event) => {
           recoverEvents = [...recoverEvents, event];
         },
       });
+      // Fire and forget: the verdict arrives at least one reconciliation
+      // interval later, and the UI polls GET /commitments for it. Only
+      // periods ending after this recovery started count.
+      void commitmentWatch
+        .start({
+          counterparties: statusCustodians.map((c) => consoleName(c.participant)),
+          about: recoverTarget,
+          since: recoverStartedAt,
+        })
+        .catch((err: unknown) => console.error("commitment watch failed to start:", err));
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ result }));
       return;
     }
@@ -295,6 +321,21 @@ async function isParticipant1Alive(): Promise<boolean> {
   }
 }
 
+// "participant2:5023" (a custodian's Ledger API) -> "participant2", the
+// console name the commitment queries address it by.
+function consoleName(ledgerApi: string): string {
+  return ledgerApi.split(":")[0] ?? ledgerApi;
+}
+
+// The rebuilt identity key is verified against this custodian's own ledger
+// view of the policy — the same custodians /status already reads through,
+// never the owner's (possibly dead) participant.
+function identityCustodian(statusCustodians: CustodianRef[]): CustodianRef {
+  const first = statusCustodians[0];
+  if (first === undefined) throw new Error("no custodians configured to verify the recovered identity against");
+  return first;
+}
+
 async function getPositions(statusCustodians: CustodianRef[]): Promise<PositionView[]> {
   if (statusCustodians.length === 0) throw new Error("no custodians configured for position queries");
   const first = statusCustodians[0];
@@ -368,7 +409,9 @@ async function getStatus(
   policyId: string,
   recoverEndpoints: string[],
 ): Promise<StatusView> {
-  const owner = (await loadExternalPartyIdentity(OWNER_KEY_PATH)).partyId;
+  // The public party id only, not the private key: the demo's disaster
+  // deletes owner.der, and /status must keep telling the truth through it.
+  const owner = await readExternalPartyId(OWNER_KEY_PATH);
   if (statusCustodians.length === 0) throw new Error("no custodians configured for status queries");
 
   const resolved = await Promise.all(

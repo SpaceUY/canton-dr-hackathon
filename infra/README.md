@@ -45,7 +45,7 @@ docker compose run --rm agent distribute --source participant1 --party owner --p
 # target's Ledger API and a live node to load the signed topology transaction)
 docker compose run --rm agent recover --target participant4 --target-ledger-api participant4:5043 \
   --loader-participant participant2 --policy-id demo \
-  --endpoints http://agent2:4002,http://agent3:4003 --k 2
+  --endpoints http://agent2:4002,http://agent3:4003 --k 2 --identity-custodian participant2:5023:custodian2
 
 # plan step 5: the on-ledger registry — run after distribute (accept-custody
 # hashes the blob distribute already pushed into each agentN's custody volume)
@@ -85,11 +85,9 @@ a remote Canton console at those ports (see `canton/bootstrap-remote.conf`
 for the shape).
 
 To destroy `participant1` for real (what the demo does) — its disk is a
-volume, so stopping the container alone loses nothing:
-
-```sh
-docker stop -t 1 infra-participant1-1 && docker rm infra-participant1-1 && docker volume rm infra_participant1_data
-```
+volume, so stopping the container alone loses nothing — run `make destroy-node`
+from the repo root. It also deletes the owner's private key file, which then
+exists only as custodian-held Shamir shares.
 
 `participant2`/`participant3` are in-memory: recreating their container
 (`docker compose up -d --force-recreate participant2`) wipes them.

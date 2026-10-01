@@ -71,6 +71,14 @@ export interface ExternalPartyIdentity {
   keyPath: string;
 }
 
+// Just the party id recorded next to the key — public information (every
+// counterparty sees it on-ledger), so reading it needs no private key.
+// For read-only views like the dashboard's /status, which must keep working
+// after the demo's disaster deletes the private key itself.
+export async function readExternalPartyId(keyPath: string): Promise<string> {
+  return (await readFile(keyPath.replace(/\.der$/, ".party-id.txt"), "utf8")).trim();
+}
+
 // Loads an already-allocated external party's identity purely from local
 // files — no network call, no allocate-fresh fallback. Use this (not
 // allocateExternalParty) wherever the original hosting participant might be

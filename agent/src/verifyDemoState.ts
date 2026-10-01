@@ -1,5 +1,6 @@
 import { loadExternalPartyIdentity } from "./externalParty.js";
 import { isPartyHostedLocally } from "./ledger.js";
+import { reconstructIdentityKey } from "./recoverIdentity.js";
 
 const OWNER_KEY_PATH = process.env.OWNER_KEY_PATH ?? "/canton/identity/owner.der";
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "http://dashboard:4010";
@@ -8,6 +9,12 @@ const EXPECTED_K = "2";
 const EXPECTED_N = "3";
 const EXPECTED_CUSTODIANS = 2;
 const EXPECTED_POSITIONS = 3;
+// Exactly what the demo's Recover button queries (ui/src/App.tsx's
+// RECOVER_ENDPOINTS) and what the dashboard verifies the rebuilt identity
+// against (its first --custodian) — the pre-flight below must exercise the
+// same path recover() will, not a friendlier one.
+const RECOVER_ENDPOINTS = ["http://agent2:4002", "http://agent3:4003"];
+const IDENTITY_CUSTODIAN = { participant: "participant2:5023", partyHint: "custodian2" };
 
 interface CustodianView {
   custodian: string;
@@ -106,6 +113,34 @@ export async function verifyDemoState(): Promise<string> {
     throw new Error("VERIFY_FAILED: GET /ciphertext failed - custodian's own blob is not readable");
   }
   lines.push("ciphertext: readable from a real custodian - OK");
+
+  // recover() rebuilds the owner's identity key from these shares — it
+  // never reads owner.der, which the demo's disaster deletes. Prove now, in
+  // memory (nothing written), that the shares the demo will rely on really
+  // reconstruct THIS owner's key, instead of finding out mid-demo.
+  let rebuilt;
+  try {
+    rebuilt = await reconstructIdentityKey({
+      policyId: EXPECTED_POLICY_ID,
+      endpoints: RECOVER_ENDPOINTS,
+      threshold: Number(EXPECTED_K),
+      custodianParticipant: IDENTITY_CUSTODIAN.participant,
+      custodianPartyHint: IDENTITY_CUSTODIAN.partyHint,
+    });
+  } catch (err) {
+    throw new Error(
+      `VERIFY_FAILED: the owner's identity key can't be rebuilt from the custodians' shares ` +
+        `(${err instanceof Error ? err.message : String(err)}) - was distribute-identity run?`,
+    );
+  }
+  if (rebuilt.partyId !== owner.partyId) {
+    throw new Error(
+      `VERIFY_FAILED: identity-key shares rebuild ${rebuilt.partyId}, but the owner is ${owner.partyId}`,
+    );
+  }
+  lines.push(
+    `identity key: rebuilt in memory from ${rebuilt.sharesUsed} custodian shares, matches owner - OK`,
+  );
 
   return `VERIFY_DEMO_STATE_OK\n${lines.join("\n")}`;
 }

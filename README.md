@@ -39,12 +39,24 @@ failure:
    - recovery requests.
 
    Blobs travel off-ledger, over HTTP.
-4. **Recovers onto a different, live participant**, in three stages shown live in the dashboard:
-   1. **Identity re-authorized.** The owner party is re-hosted on the new participant with a
-      topology transaction signed by the owner's own key. The dead node takes no part.
-   2. **Key reconstructed** from k custodian shares.
-   3. **State imported.** The decrypted ACS goes into the new participant.
-5. **Proves the party is operating again.** A counterparty with no special handling proposes a new
+4. **Recovers onto a different, live participant**, in four stages shown live in the dashboard:
+   1. **Identity key rebuilt.** The demo's disaster deletes the owner's private key along with the
+      node. `recover` rebuilds it from k custodians' identity-key shares, and checks it against
+      the owner party a custodian sees on its own ledger. It never reads a key from disk, and it
+      touches nothing if this stage fails.
+   2. **Identity re-authorized.** The owner party is re-hosted on the new participant with a
+      topology transaction signed by the rebuilt key. The dead node takes no part.
+   3. **Data key reconstructed** from k custodian shares.
+   4. **State imported.** The decrypted ACS goes into the new participant. That is the state as of
+      the last backup, not as of the disaster (see the limitations).
+5. **Lets the counterparties verify the result.** Each custodian's participant and the recovered
+   one independently hash the state they share (Canton's ACS commitments, once per reconciliation
+   interval, here 1 minute), and Canton compares the two. The dashboard's "Counterparty
+   verification" panel shows the result for each pair:
+   - waiting for the recovered node's commitment;
+   - `Match`;
+   - periods in disagreement.
+6. **Proves the party is operating again.** A counterparty with no special handling proposes a new
    contract. The recovered owner accepts it, signing with its own identity from the new node. The
    resulting contract's only signatory is the owner.
 
@@ -58,9 +70,9 @@ failure:
 | Party re-hosted on a different participant after its node's disk is deleted | **Real**, demo path |
 | Recovered owner signs a new contract from the new node | **Real**, demo path |
 | On-ledger policy, custody receipts, challenges, recovery requests (Daml) | **Real**. See the limitations on what the challenge proves |
-| Identity key protected by Shamir (`distribute-identity` / `recover-identity`) | **Real, but not yet in the demo path.** Verified with a genuinely deleted key file. `recover` currently reads the owner key from the owner-side identity volume, which survives the demo's disaster. Wiring the Shamir reconstruction into `recover` is the next change. |
+| Owner's private key deleted in the disaster, rebuilt from custodians' Shamir shares | **Real**, demo path. `make destroy-node` deletes `owner.der`; `recover` rebuilds it from 2 identity-key shares and writes it back only after verifying it |
 | ACS commitments match between independent participants | **Real** (`check-commitment`, before the disaster) |
-| Recovered state automatically validated against ACS commitments | **Not implemented.** See the limitations |
+| Recovered state checked against the counterparties' ACS commitments | **Real**, demo path. After recovery, the dashboard shows Canton's own comparison between each custodian's node and the recovered node. It gave `Match`, with zero disagreeing periods, in 2 of 2 measured runs, 40–75 s after recovery. It is shown on screen, not a gate: `recover` doesn't wait for it. See the limitations for what it covers |
 | Degraded backups automatically detected and re-replicated | **Not implemented** |
 | Running on DevNet / MainNet | **Not done.** Local Docker topology only |
 
@@ -147,21 +159,35 @@ The full run guide, CLI and HTTP API reference, and troubleshooting are in
 
 | Time | What happens | How |
 |---|---|---|
-| 0:00 | **Destroy the node.** Kill `participant1` and delete its disk. | `docker stop -t 1 infra-participant1-1 && docker rm infra-participant1-1 && docker volume rm infra_participant1_data` (from `infra/`) |
+| 0:00 | **Destroy the node.** Kill `participant1`, delete its disk, and delete the owner's private key file. | `make destroy-node` |
 | 0:10 | The dashboard detects the death on its own. The positions that were at stake stay on screen. | Real reachability polling every 3 s |
 | 0:35 | Show what a custodian actually holds: raw ciphertext. | UI footer, fetched live from `agent2`'s volume |
-| 1:05 | **Recover.** Identity re-authorized, then key reconstructed from the 2 independent custodians, then state imported. The owner's own copy (`agent1`) is skipped on purpose. | **Recover** button, or `docker compose run --rm agent recover ...` |
+| 1:05 | **Recover.** The identity key is rebuilt from the 2 independent custodians, the identity is re-authorized, then the data key is reconstructed and the state imported. The owner's own copy (`agent1`) is skipped on purpose. | **Recover** button, or `docker compose run --rm agent recover ...` |
 | 3:00 | **Counterparty transacts.** The recovered owner signs a new contract itself. | **Counterparty transacts with recovered owner** button |
+| ~4:00 | **Counterparty verification.** Canton's own ACS-commitment comparison between each custodian's node and the recovered node: waiting, then `Match`. It is visible from the moment recovery succeeds. | Panel under the signed contract, no click |
 
 The nodes are always killed from a terminal, never from the dashboard. The dashboard is an
 unauthenticated local API and deliberately cannot kill containers.
 
-Measured on a laptop (Apple Silicon, Docker Desktop):
-- **Fresh recovery (RTO):** about 40–100 s, depending on host load. The dashboard shows the live
-  timer.
-- **Closing transaction:** about 35–55 s, mostly waiting for Canton to finish onboarding the party
-  on the new node.
-- **Full timed run** (destroy → recover → close, without narration): 2:58.
+Measured on a laptop (Apple Silicon, Docker Desktop, 8 CPUs), on a clean `make demo-reset`
+environment, with the actions run back to back through the same HTTP API the buttons use:
+
+| Step | Time |
+|---|---|
+| `make destroy-node` | 2.4 s |
+| **Recover (RTO)**, click to result | **54.8 s** |
+| &nbsp;&nbsp;↳ identity key rebuilt from 2 custodian shares | 0.8 s |
+| &nbsp;&nbsp;↳ identity re-authorized on the new participant | 39.1 s |
+| &nbsp;&nbsp;↳ data key reconstructed | < 0.1 s |
+| &nbsp;&nbsp;↳ state imported | 15.0 s |
+| Closing transaction, clicked immediately | 47.9 s |
+| **Total technical time**, destroy → recovered → counterparty transacted | **≈ 1:45** |
+
+Notes on these numbers:
+- Most of the closing step's time is Canton finishing the party's onboarding on the new node.
+- A second run measured 43.7 s for recovery and 54.9 s for the closing step.
+- Under sustained host load, fresh recoveries have taken up to about 100 s. The dashboard shows
+  the live timer.
 
 ## Known limitations
 
@@ -171,9 +197,20 @@ These are stated rather than hidden.
   third-party custodians, and the owner's own copy skipped on purpose), there is **no tolerance for a
   custodian outage**. `recover` skips an unreachable custodian and tries the next, but there is no
   spare to try.
-- **No backup, no recovery.** Backups are point-in-time snapshots taken by `distribute`, so the RPO
-  is the time since the last distribution (shown as "Backup freshness"). There is no continuous or
-  delta backup.
+- **No backup, no recovery. Anything after the last backup is lost.** Backups are point-in-time
+  snapshots taken by `distribute`, so the RPO is the time since the last distribution (shown as
+  "Backup freshness"). There is no continuous or delta backup.
+  - Contracts created after the last snapshot are not on the recovered node, and the recovery
+    itself does not warn about them.
+  - Canton's ACS commitments do detect the gap: the recovered participant's commitments with its
+    counterparties read `Mismatch`. We saw this in a rehearsal where the snapshot predated the
+    custodians' receipts.
+  - To avoid that in the demo, `make demo-reset` takes a final backup after every pre-disaster
+    contract exists.
+- **Custody receipts point at the previous backup.** A receipt (`CustodianAgreement`) records the
+  hash of the blob the custodian received, so it can never be inside that same blob. After the
+  final refresh, the on-ledger receipts carry the hash of the earlier blob, not the one the
+  custodians now hold. Receipts are not re-issued per backup.
 - **The custodian store has no authentication.** Anyone who can reach a custodian's HTTP port can
   read its blob and shares, including identity-key shares, or overwrite them. That includes other
   custodians. In practice this voids the "no single custodian can decrypt" property against anyone
@@ -187,15 +224,20 @@ These are stated rather than hidden.
 - **No automatic re-replication.** A custodian that stops answering is shown, not replaced.
   `frequencyHours` in the policy isn't enforced, and `challenge-loop` exists but isn't run by
   default.
-- **Commitments aren't part of recovery.** `check-commitment` shows real matching ACS commitments
-  between live participants before a disaster. The recovered state isn't compared automatically:
-  the recovery target is a different participant with no commitment history, and the command
-  reports Canton's result without asserting `Match`. After a disaster the dead node's own
-  commitment history is gone too, so verification means asking the counterparty; it isn't local.
+- **The commitment check comes after recovery, and it is partial.**
+  - It covers only contracts the recovered owner shares with parties on the custodians'
+    participants. Contracts with nobody else on those nodes aren't compared.
+  - It compares periods *after* recovery, on the new participant pair. The dead node's own
+    pre-disaster commitment history is gone.
+  - `recover` doesn't wait for it or fail on it: the panel reports, it doesn't gate.
+  - A verdict needs at least one reconciliation interval (1 minute here). We measured 40–75 s
+    after recovery.
 - **What's recovered is an external party**, onto a different participant. The dead participant's
   own node identity and any *local* parties it hosted aren't recovered.
-- **The identity key in the demo path:** see the table above. Its Shamir recovery is implemented
-  and verified on its own, but isn't yet what `recover` uses.
+- **The owner's public party id survives the disaster** (`owner.party-id.txt`): it's public
+  information that every counterparty sees on-ledger, and the dashboard reads it. The private key
+  does not survive. After recovery, the rebuilt key is written back to the owner-side key store,
+  so the owner can keep signing.
 - **Demo simplifications:**
   - Custodian-side commands (`accept-custody`, `respond`) run from the shared `agent` CLI
     container, which mounts every custody volume read-only. They don't run on each custodian's own

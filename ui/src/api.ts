@@ -82,7 +82,15 @@ export async function triggerRecover(req: RecoverRequest): Promise<string> {
 // Real execution order (see agent/src/recover.ts) — identity is
 // re-authorized before the encryption key is even touched, not "key first"
 // as the narration might suggest.
-export type RecoverStep = "identity-reauthorized" | "key-reconstructed" | "state-restored";
+export type RecoverStep =
+  | "identity-key-reconstructed"
+  | "identity-reauthorized"
+  | "key-reconstructed"
+  | "state-restored";
+
+// Which of the two independent secrets a custodian round trip was for —
+// mirrors agent/src/custodyFetch.ts's CustodySecret.
+export type CustodySecret = "identity" | "data";
 
 // Mirrors agent/src/rehostParty.ts's RehostSubStep exactly — real phases of
 // re-authorizing identity on the target (propose/sign/load/verify), each
@@ -103,12 +111,12 @@ export type RehostSubStep =
 
 // Mirrors agent/src/recover.ts's RecoverEvent exactly — one event per real
 // network round trip to a custodian, one per real identity-reauthorization
-// sub-phase, plus the three milestones. Nothing here is invented
+// sub-phase, plus the four milestones. Nothing here is invented
 // client-side; every event corresponds to something the backend actually
 // did.
 export type RecoverEvent =
-  | { type: "custodian-query"; endpoint: string }
-  | { type: "custodian-response"; endpoint: string; ok: boolean }
+  | { type: "custodian-query"; endpoint: string; secret: CustodySecret }
+  | { type: "custodian-response"; endpoint: string; ok: boolean; secret: CustodySecret }
   | { type: "rehost-substep"; step: RehostSubStep; detail?: string }
   | { type: "milestone"; step: RecoverStep };
 
@@ -137,4 +145,25 @@ export async function triggerCounterpartyTx(): Promise<CounterpartyTxResult> {
   const body = (await res.json()) as CounterpartyTxResult & { error?: string };
   if (!res.ok) throw new Error(body.error ?? `POST /counterparty-tx failed: ${res.status}`);
   return body;
+}
+
+// Mirrors agent/src/commitmentWatch.ts's CommitmentWatchView exactly: Canton's
+// own per-period comparison (ACS commitments) between each custodian's node
+// and the recovered one, as the dashboard reads it after a recovery.
+export type CommitmentState = "Match" | "Mismatch" | "NotCompared";
+
+export interface CommitmentWatchView {
+  status: "idle" | "watching" | "done" | "timeout" | "error";
+  about: string | null;
+  reconciliationInterval: string | null;
+  startedAt: string | null;
+  updatedAt: string | null;
+  pairs: { counterparty: string; periods: { periodEnd: string; state: CommitmentState }[] }[];
+  error: string | null;
+}
+
+export async function fetchCommitments(): Promise<CommitmentWatchView> {
+  const res = await fetch(`${API_URL}/commitments`);
+  if (!res.ok) throw new Error(`GET /commitments failed: ${res.status}`);
+  return (await res.json()) as CommitmentWatchView;
 }
