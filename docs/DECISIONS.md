@@ -1,6 +1,6 @@
 # Design decisions
 
-A condensed, English record of the architecture decisions (ADRs) behind canton-dr, and the one
+A condensed, English record of the architecture decisions (ADRs) behind Tessera, and the one
 communication rule that governs how we describe it. The full, day-by-day versions live in the
 team's internal notes; everything a reviewer needs to judge the design is here. File references
 point at this repo.

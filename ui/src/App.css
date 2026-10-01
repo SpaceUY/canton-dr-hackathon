@@ -22,9 +22,12 @@ h1 {
   margin: 0 0 1.25rem;
 }
 
-.h1-project {
+/* Product first, credit after: small, muted, on the same line. */
+.h1-credit {
+  font-size: 0.75rem;
   font-weight: 500;
   color: #71717a;
+  margin-left: 0.35rem;
 }
 
 h2 {

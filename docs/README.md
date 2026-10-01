@@ -1,6 +1,6 @@
-# canton-dr — run guide and reference
+# Tessera — run guide and reference
 
-How to run, drive and troubleshoot the canton-dr environment. For what the project is, what's real
+How to run, drive and troubleshoot the Tessera environment. For what the project is, what's real
 versus not, and its known limitations, start at the [root README](../README.md). For why it's built
 this way, see [DECISIONS.md](DECISIONS.md). Everything here was verified against the real Canton
 3.5.18 binary, including genuinely destroying a container and its volume.

@@ -1,7 +1,24 @@
-# canton-dr
+# Tessera
 
-Verifiable decentralized disaster recovery for Canton nodes.
-Project for the Canton Network hackathon (AppsFactory).
+**Tessera — operational continuity for Canton participants.** Survive participant loss without
+losing your operational identity. Project for the Canton Network hackathon (AppsFactory).
+
+**Name (since 2026-10-01).** The project was called canton-dr. The new name comes from the Roman
+*tessera hospitalis*, a token broken into pieces, one per party; fitting them back together proved
+the bond. That image is Shamir k-of-n, and it belongs in the README and the demo script.
+
+**Framing.** The headline is operational continuity. "Disaster recovery" is the category it belongs
+to and is mentioned once in the README, not as the title.
+
+**Technical identifiers keep the old name on purpose. Don't rename them.**
+- the Daml package `canton-dr` (templateIds `#canton-dr:...`, the DAR);
+- the Docker image `canton-dr-agent:latest`;
+- the package.json names;
+- the repo and vault names and paths (`canton-dr-hackathon`, `../canton-dr-hackathon-vault`);
+- the vault's `canton-dr` tag and its "canton-dr Product Brief" note.
+
+Renaming these risks breaking the demo, and judges don't see them. The rule is: change what the
+jury sees, not what the demo needs to start.
 
 **Live context lives in the sibling vault repo**, `../canton-dr-hackathon-vault` — a real Obsidian
 vault as of 2026-09-25, not flat files. Start at its `Hub.md`. `Roadmap.md` (what to build now,
