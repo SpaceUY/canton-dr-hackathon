@@ -4,3 +4,9 @@
 
 # Editor workspaces (point at personal paths outside this repo).
 *.code-workspace
+
+# Local Claude settings (personal paths).
+.claude/settings.local.json
+
+# Scale test logs.
+scripts/scale-test-*.log
