@@ -98,6 +98,7 @@ a single point of failure for everything its parties do:
 | ACS commitments match between independent participants | **Real** (`check-commitment`, before the participant loss) |
 | Recovered state checked against the counterparties' ACS commitments | **Real**, demo path. After recovery, the dashboard shows Canton's own comparison between each custodian's node and the recovered node. It gave `Match`, with zero disagreeing periods, in 2 of 2 measured runs, 40–75 s after recovery. It is shown on screen, not a gate: `recover` doesn't wait for it. See the limitations for what it covers |
 | Degraded backups automatically detected and re-replicated | **Not implemented** |
+| Scale: 1,000 extra contracts backed up, participant destroyed, party recovered, counterparty transacts | **Real**, measured 2026-10-02 with `scripts/scale-test.sh`: 1,009 active contracts for the owner before and after (counted through the Canton console on both participants), backup 12.8 s, `recover` 44.3 s, custodian store 233 KB, closing transaction 42.9 s on the recovered node. One run, one laptop |
 | Running on DevNet / MainNet | **Not done.** Local Docker topology only |
 
 ## Architecture
@@ -274,6 +275,12 @@ These are stated rather than hidden.
     container, which mounts every custody volume read-only. They don't run on each custodian's own
     infrastructure.
   - One exports volume is mounted into all agents.
+- **The agent reads a party's whole ACS in one JSON API response.** `queryActive` asks the
+  Ledger JSON API for every active contract of a party and filters by template on the client. The
+  JSON API caps that list (200 by default); the 1,000-contract scale test hit the cap and broke
+  `recover`'s identity check and the closing transaction. The participants now raise it to 100,000
+  (`http-list-max-elements-limit` in `infra/canton/participant*.conf`). The real fix, server-side
+  template filters plus pagination, isn't done.
 - **Local only.** The stack is tested on a single machine with Docker Desktop. It hasn't run on
   DevNet.
 
@@ -285,6 +292,8 @@ agent/    per-node service and CLI (TypeScript, Node)
 ui/       dashboard (Vite + React + React Flow)
 infra/    docker-compose topology, Canton configs, Canton image
 docs/     run guide & reference (README.md), design decisions (DECISIONS.md), build checklist (ROADMAP.md)
+scripts/  scale test (scale-test.sh: back up and recover N contracts, default 1,000; wipes and
+          resets the environment)
 spikes/   frozen proof-of-mechanism scripts for external-party recovery (historical)
 ```
 
